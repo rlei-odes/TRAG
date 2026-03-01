@@ -13,8 +13,8 @@ Steps at a glance:
     5  ask()                 — Send a query and return the answer
 
 LLM backends (BACKEND must be set explicitly — there is no default):
-    ollama  — local Ollama server at http://localhost:11434
-    openai  — requires OPENAI_API_KEY (env var or /secrets/OPENAI_API_KEY file)
+    ollama — local Ollama server at http://localhost:11434
+    openai — requires OPENAI_API_KEY (env var or /secrets/OPENAI_API_KEY file)
 
 Data & vector store:
     PDFs are read from <project-root>/data/.
@@ -125,8 +125,8 @@ def build_llm(
     """Instantiate the LLM for the requested backend.
 
     Args:
-        backend:     LLM backend — must be one of 'ollama', 'openai', or 'qwen'. No default.
-        model_name:  Model to use. Falls back to the per-backend default when None.
+        backend: LLM backend — must be one of 'ollama', 'openai', or 'qwen'. No default.
+        model_name: Model to use. Falls back to the per-backend default when None.
         temperature: Sampling temperature.
         response_format: Optional parameter to specify the desired response format (e.g., "json"). Supported by some backends.
 
@@ -179,11 +179,9 @@ def load_chunks(max_files: int | None = None) -> list[Chunk]:
         .pdf: converted to Markdown via pymupdf4llm, split on headings
         .xlsx, .xls: one chunk per sheet (Markdown table)
 
-    Unsupported formats (e.g. standalone images) are logged as warnings and skipped.
-    Images embedded inside PDFs are not extracted as text by default!
+    Unsupported formats (e.g. standalone images) are logged as warnings and skipped. Images embedded inside PDFs are not extracted as text by default!
 
-    Pass 'max_files' to cap the total number of files processed. Useful for quick
-    iteration during development before scaling to all files.
+    Pass 'max_files' to cap the total number of files processed. Useful for quick iteration during development before scaling to all files.
     """
     all_chunks: list[Chunk] = []
     all_files = sorted(f for f in DATA_DIR.iterdir() if f.is_file())
@@ -235,9 +233,7 @@ def load_chunks(max_files: int | None = None) -> list[Chunk]:
 def inspect_chunks(chunks: list[Chunk], sample_size: int = 5) -> None:
     """Print a statistical summary and sampled content for visual inspection.
 
-    Call this after 'load_chunks' to verify that PDFs parsed correctly
-    and that the chunk granularity looks reasonable before spending time on
-    embedding.
+    Call this after 'load_chunks' to verify that PDFs parsed correctly and that the chunk granularity looks reasonable before spending time on embedding.
     """
     counts = Counter(c.metadata.get("source_file", "unknown") for c in chunks)
     logger.info("------ Chunk inspection -------")
@@ -259,9 +255,7 @@ async def build_vector_store(
 ) -> ChromaDBVectorStore:
     """Embed 'chunks' and persist them in a ChromaDB vector store.
 
-    Set 'reset=True' to delete and rebuild the store from scratch. Leave
-    'reset=False' (default) to reuse an existing store, embedding all documents
-    takes time; skipping it on subsequent runs saves time.
+    Set 'reset=True' to delete and rebuild the store from scratch. Leave 'reset=False' (default) to reuse an existing store, embedding all documents takes time; skipping it on subsequent runs saves time.
     """
     vector_store = ChromaDBVectorStore(db_path=str(db_path))
 
@@ -297,16 +291,9 @@ async def inspect_retrieval(
 ) -> list[ChunkMatch]:
     """Run semantic retrieval and print the results before the LLM sees anything.
 
-    This is the most important diagnostic step: if the chunks returned here are
-    wrong, the final answer will be wrong regardless of the model. Run this step
-    in isolation to tune 'RETRIEVER_TOP_K', experiment with query phrasing, or compare
-    different embedding models.
+    This is the most important diagnostic step: if the chunks returned here are wrong, the final answer will be wrong regardless of the model. Run this step in isolation to tune 'RETRIEVER_TOP_K', experiment with query phrasing, or compare different embedding models.
 
-    # To add lexical (BM25) or hybrid (semantic + lexical) retrieval, replace
-    'VectorStoreRetriever' with 'HybridRetriever([semantic, bm25], top_k=top_k)'.
-    'BM25Retriever' requires a 'list[ChunkRecord]' corpus -> pass the records
-    retrieved from ChromaDB or, after a full store insert, re-fetch them with
-    'vector_store.get_chunks_by_embedding(zero_vector, top_k=N)'.
+    # To add lexical (BM25) or hybrid (semantic + lexical) retrieval, replace 'VectorStoreRetriever' with 'HybridRetriever([semantic, bm25], top_k=top_k)' 'BM25Retriever' requires a 'list[ChunkRecord]' corpus -> pass the records retrieved from ChromaDB or, after a full store insert, re-fetch them with 'vector_store.get_chunks_by_embedding(zero_vector, top_k=N)'.
     """
     retriever = VectorStoreRetriever(embedding_model, vector_store, top_k=top_k)
     results = await retriever.retrieve(query)
@@ -334,10 +321,7 @@ def build_agent(
 ) -> RAG:
     """Assemble the RAG agent from a pre-built vector store and LLM.
 
-    'number_query_expansion' > 0 expands the user query into N related English
-    sub-queries, retrieves for each separately, and merges results with RRF
-    before generation. Useful for broad or ambiguous questions but adds one
-    LLM call per expansion.
+    'number_query_expansion' > 0 expands the user query into N related English sub-queries, retrieves for each separately, and merges results with RRF before generation. Useful for broad or ambiguous questions but adds one LLM call per expansion.
     """
     retriever = VectorStoreRetriever(embedding_model, vector_store, top_k=top_k)
     agent = RAG(
@@ -361,9 +345,7 @@ async def ask(
 ) -> str:
     """Send 'query' to the RAG agent and log the answer plus cited sources.
 
-    Returns the answer string so callers can store or post-process it.
-    Pass 'history' to simulate a multi-turn conversation: the agent will
-    rewrite the query to be self-contained before retrieval.
+    Returns the answer string so callers can store or post-process it. Pass 'history' to simulate a multi-turn conversation: the agent will rewrite the query to be self-contained before retrieval.
     """
     logger.info(f"Query: {query!r}")
     response = await agent.answer(QueryWithContext(query=query, history=history or []))

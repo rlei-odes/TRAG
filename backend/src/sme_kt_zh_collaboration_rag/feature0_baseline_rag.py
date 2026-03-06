@@ -1,9 +1,7 @@
 """
 Baseline RAG pipeline.
 
-Each pipeline stage is an independent function so you can run and inspect
-individual steps without executing the full pipeline. loguru logs the
-intermediate state at every stage.
+Each pipeline stage is an independent function so you can run and inspect individual steps without executing the full pipeline.
 
 Steps at a glance:
     1  load_chunks()         — Load PDFs, split into header-based chunks

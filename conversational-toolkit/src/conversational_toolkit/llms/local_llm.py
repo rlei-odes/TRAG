@@ -1,7 +1,7 @@
 from typing import AsyncGenerator
 
 from loguru import logger
-from conversational_toolkit.llms.base import LLM, LLMMessage, Roles
+from conversational_toolkit.llms.base import LLM, LLMMessage, MessageContent, Roles
 from openai import AsyncOpenAI
 
 
@@ -31,7 +31,7 @@ class LocalLLM(LLM):
         logger.debug(f"Completion: {completion}")
 
         return LLMMessage(
-            content=completion.choices[0].message.content or "",
+            content=[MessageContent(type="text", text=completion.choices[0].message.content or "")],
             role=Roles(completion.choices[0].message.role),
             tool_calls=completion.choices[0].message.tool_calls,  # type: ignore
         )

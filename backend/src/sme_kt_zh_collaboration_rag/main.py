@@ -2,6 +2,7 @@ import os
 import pathlib
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import uvicorn
 
@@ -74,13 +75,14 @@ SYSTEM_PROMPT = dedent("""
 
 class CustomRAG(RAG):
     async def _answer_post_processing(self, answer: AgentAnswer) -> AgentAnswer:
-        json_answer = parse_llm_json_stream(
-            answer.content[0].text if answer.content else ""
+        json_answer: dict[str, Any] = (
+            parse_llm_json_stream(answer.content[0].text if answer.content else "")
+            or {}
         )
 
-        content = json_answer.get("answer", "")
-        relevant_source_ids = json_answer.get("used_sources_id", [])
-        follow_up_questions = json_answer.get("follow_up_questions", [])
+        content: str = json_answer.get("answer", "")
+        relevant_source_ids: list[str] = json_answer.get("used_sources_id", [])
+        follow_up_questions: list[str] = json_answer.get("follow_up_questions", [])
         unique_sources = list({s.id: s for s in answer.sources}.values())
         return AgentAnswer(
             content=[MessageContent(type="text", text=content)],

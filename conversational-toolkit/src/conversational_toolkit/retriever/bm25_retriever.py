@@ -7,11 +7,12 @@ Typical usage: initialise from a list of 'ChunkRecord' objects already stored in
 """
 
 import re
+from typing import Optional
 
 from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
 
 from conversational_toolkit.retriever.base import Retriever
-from conversational_toolkit.vectorstores.base import ChunkMatch, VectorStore
+from conversational_toolkit.vectorstores.base import ChunkMatch, ChunkRecord, VectorStore
 
 
 class BM25Retriever(Retriever[ChunkMatch]):
@@ -27,9 +28,9 @@ class BM25Retriever(Retriever[ChunkMatch]):
     def __init__(self, vector_store: VectorStore, top_k: int) -> None:
         super().__init__(top_k)
         self.vs = vector_store
-        self.corpus = ([],)
-        self.tokenized = []
-        self._bm25 = None
+        self.corpus: list[ChunkRecord] = []
+        self.tokenized: list[list[str]] = []
+        self._bm25: Optional[BM25Okapi] = None
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
@@ -44,6 +45,7 @@ class BM25Retriever(Retriever[ChunkMatch]):
             self._bm25 = BM25Okapi(tokenized)
 
         query_terms = self._tokenize(query)
+        assert self._bm25 is not None
         scores: list[float] = self._bm25.get_scores(query_terms).tolist()
         top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[: self.top_k]
         return [

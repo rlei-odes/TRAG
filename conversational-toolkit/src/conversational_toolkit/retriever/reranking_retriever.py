@@ -14,7 +14,7 @@ from typing import Any
 
 from loguru import logger
 
-from conversational_toolkit.llms.base import LLM, LLMMessage, Roles
+from conversational_toolkit.llms.base import LLM, LLMMessage, MessageContent, Roles
 from conversational_toolkit.retriever.base import Retriever
 from conversational_toolkit.vectorstores.base import ChunkMatch, ChunkRecord
 
@@ -84,14 +84,18 @@ class RerankingRetriever(Retriever[ChunkMatch]):
         messages = [
             LLMMessage(
                 role=Roles.SYSTEM,
-                content="You are an expert at assessing document relevance. Output only valid JSON.",
+                content=[
+                    MessageContent(
+                        type="text", text="You are an expert at assessing document relevance. Output only valid JSON."
+                    )
+                ],
             ),
-            LLMMessage(role=Roles.USER, content=prompt),
+            LLMMessage(role=Roles.USER, content=[MessageContent(type="text", text=prompt)]),
         ]
 
         try:
             response = await self.llm.generate(messages)
-            data = json.loads(response.content)
+            data = json.loads(response.content[0].text or "")
             ranking: list[int] = [int(i) for i in data["ranking"] if 0 <= int(i) < len(candidates)]
             # Append any missing indices at the end (graceful fallback for partial rankings)
             seen = set(ranking)

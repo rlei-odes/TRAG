@@ -50,7 +50,7 @@ async def make_query_standalone(llm: LLM, history: list[LLMMessage], query: str)
             ],
         ),
     ]
-    reformulated_query = (await llm.generate(conversation)).content[0].text
+    reformulated_query = (await llm.generate(conversation)).content[0].text or ""
 
     loguru.logger.debug(f"Original query: {query}")
     loguru.logger.debug(f"Reformulated query: {reformulated_query}")
@@ -83,7 +83,7 @@ async def query_expansion(query: str, llm: LLM, expansion_number: int = 2) -> li
         ),
     ]
 
-    generated_queries = (await llm.generate(conversation)).content[0].text.strip().split("\n")
+    generated_queries = ((await llm.generate(conversation)).content[0].text or "").strip().split("\n")
 
     loguru.logger.debug(f"Original query for expansion: {query}")
     for i, generated_query in enumerate(generated_queries, start=1):
@@ -105,7 +105,7 @@ async def hyde_expansion(query: str, llm: LLM) -> str:
         ),
         LLMMessage(role=Roles.USER, content=[MessageContent(type="text", text=query)]),
     ]
-    hyde_expansion_message = (await llm.generate(conversation)).content[0].text
+    hyde_expansion_message = (await llm.generate(conversation)).content[0].text or ""
 
     loguru.logger.debug(f"Original query for HyDE expansion: {query}")
     loguru.logger.debug(f"HyDE expansion: {hyde_expansion_message}")

@@ -119,27 +119,78 @@ jupyter lab
 
 ## Quick Start
 
-**Notebooks (exploration and learning):**
+### Running the full stack (backend API + frontend)
+
+This launches the FastAPI backend and the Next.js chat frontend together.
+
+**Prerequisites:** Python ≥ 3.12, Node.js / npm, and either an OpenAI API key or a running Ollama server (see [Ollama](#ollama-local-llm) below).
+
+**Step 1 — install Python dependencies** (skip if already done)
+
+```bash
+python -m venv rag_venv
+source rag_venv/bin/activate  # on Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Step 2 — create `.env.local`** (required for `make run`)
+
+The Makefile reads your API key from a `.env.local` file in the project root. Create it with:
+
+```bash
+echo "OPENAI_API_KEY=sk-..." > .env.local
+```
+
+Or open the file in an editor and add:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+> If you run the backend without the Makefile, you can export the key in your shell instead and skip this file — see the "Without the Makefile" command in Step 3.
+
+**Step 3 — start the backend**
+
+With the Makefile:
+
+```bash
+make run
+```
+
+Without the Makefile:
+
+```bash
+# OpenAI
+BACKEND=openai python -m sme_kt_zh_collaboration_rag.main
+
+# Ollama (requires `ollama serve` and a pulled model)
+BACKEND=ollama python -m sme_kt_zh_collaboration_rag.main
+```
+
+The server starts at `http://localhost:8080`.
+
+**Step 4 — start the frontend** (in a separate terminal)
+
+```bash
+cd frontend
+npm install # first time only
+npm run dev
+```
+
+**Step 5 — open the app**
+
+Go to `http://localhost:3000` in your browser.
+
+---
+
+### Notebooks (exploration and learning)
 
 ```bash
 jupyter lab
 # Open backend/notebooks/feature0a_baseline_rag.ipynb to start
 ```
 
-**Full stack (backend API + frontend):**
-
-```bash
-# Start the backend (builds vector store on first run, ~30 s)
-BACKEND=openai python -m sme_kt_zh_collaboration_rag.main
-# or
-BACKEND=ollama python -m sme_kt_zh_collaboration_rag.main
-
-# In a separate terminal, start the frontend
-cd frontend && npm install && npm run dev
-# Open http://localhost:3000
-```
-
-**Single query from the command line:**
+### Single query from the command line
 
 ```bash
 BACKEND=openai python -m sme_kt_zh_collaboration_rag.feature0_baseline_rag
@@ -151,11 +202,13 @@ BACKEND=openai RESET_VS=1 python -m sme_kt_zh_collaboration_rag.feature0_baselin
 
 ## Workshop Feature Tracks
 
-The workshop is structured as progressive feature tracks, each implemented as one or more Jupyter notebooks in `backend/notebooks/`. Each notebook is
-self-contained: it builds the vector store on first run and imports the `conversational_toolkit` library. Run notebooks top to bottom within a session.
+The workshop is structured as progressive feature tracks, each implemented as one or more Jupyter notebooks in `backend/notebooks/`. Run notebooks top to bottom within a session.
+
+Run `demo_build_db.ipynb` once before the feature notebooks to populate the shared vector stores. Feature notebooks import the `conversational_toolkit` library and expect those stores to exist.
 
 | Notebook                                                 | Topic                            | What you learn                                                                                                                                                                    |
 |----------------------------------------------------------|----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `demo_build_db.ipynb`                                    | **Setup: Build Vector Stores**   | Runs once to embed the full corpus and persist two ChromaDB collections: `vs_text` (OpenAI embeddings) and `vs_image` (Qwen3-VL embeddings) under `backend/src/sme_kt_zh_collaboration_rag/db/`. |
 | `feature0a_baseline_rag.ipynb`                           | **Baseline RAG Pipeline**        | The five-stage RAG loop (chunk, embed, store, retrieve, generate), how retrieval inspection works as a debugging tool, and the main failure modes the workshop addresses.         |
 | `feature0b_ingestion.ipynb`                              | **Document Ingestion**           | PDF parser comparison (markitdown vs. docling), chunking strategies (fixed-size, header-based, paragraph-aware), token limits, and how chunking choice affects retrieval quality. |
 | `feature1a_evaluation.ipynb`                             | **Evaluation & Validation**      | Reference-free RAGAS metrics (Faithfulness, AnswerRelevancy); ground-truth metrics (ContextPrecision, ContextRecall); systematic comparison of RAG pipeline configurations.       |
@@ -174,7 +227,8 @@ self-contained: it builds the vector store on first run and imports the `convers
 ```
 .
 ├── backend/                   # RAG pipeline application
-│   ├── notebooks/             # Workshop notebooks (feature0a – feature4e)
+│   ├── notebooks/             # Workshop notebooks
+│   │   ├── demo_build_db.ipynb                  # One-off setup: build text + image vector stores
 │   │   ├── feature0a_baseline_rag.ipynb
 │   │   ├── feature0b_ingestion.ipynb
 │   │   ├── feature1a_evaluation.ipynb
@@ -186,6 +240,9 @@ self-contained: it builds the vector store on first run and imports the `convers
 │   │   ├── feature3d_context_enrichment.ipynb
 │   │   └── feature4a_tools.ipynb – feature4e_rag_subagent.ipynb
 │   └── src/sme_kt_zh_collaboration_rag/
+│       ├── db/
+│       │   ├── vs_text/                # ChromaDB collection — text chunks (OpenAI embeddings)
+│       │   └── vs_image/               # ChromaDB collection — image chunks (Qwen3-VL embeddings)
 │       ├── feature0_baseline_rag.py    # Five-step pipeline (chunking, embedding, retrieval, generation)
 │       ├── feature0_ingestion.py       # Parser comparison, chunking utilities, token analysis
 │       ├── feature1_evaluation.py      # Shared evaluation queries and ground-truth answers

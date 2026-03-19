@@ -1,7 +1,6 @@
 # Backend RAG Pipeline
 
-This package (`sme_kt_zh_collaboration_rag`) contains the notebooks and the supporting Python modules that run the RAG pipeline for the PrimePack AG
-sustainability use case.
+This package (`sme_kt_zh_collaboration_rag`) contains the notebooks and the supporting Python modules that run the RAG pipeline for the PrimePack AG sustainability use case.
 
 ---
 
@@ -9,24 +8,42 @@ sustainability use case.
 
 ```
 backend/
-├── notebooks/                              # Workshop notebooks (one or more per feature track)
-│   ├── feature0a_baseline_rag.ipynb        # Baseline RAG pipeline
-│   ├── feature0b_ingestion.ipynb           # Document ingestion and chunking deep-dive
-│   ├── feature1a_evaluation.ipynb          # RAGAS evaluation (Faithfulness, AnswerRelevancy, ContextPrecision, ContextRecall)
-│   ├── feature1b_dataset_creation.ipynb    # Synthetic Q&A dataset generation
-│   ├── feature2a_structured_outputs.ipynb  # Structured JSON outputs with evidence levels
-│   ├── feature3a_advanced_retrieval.ipynb  # BM25, hybrid retrieval, metadata filtering
-│   ├── feature3b_conversation.ipynb        # Multi-turn conversation management
-│   ├── feature3c_query_techniques.ipynb    # Query expansion and HyDE
-│   ├── feature3d_context_enrichment.ipynb  # Neighbouring-chunk context expansion
+├── notebooks/                                                # Workshop notebooks
+│   ├── demo_build_db.ipynb                                   # One-off script to build the text and image vector stores
+│   ├── feature0a_baseline_rag.ipynb                          # Baseline RAG pipeline
+│   ├── feature0b_ingestion.ipynb                             # Document ingestion and chunking deep-dive
+│   ├── feature1a_evaluation.ipynb                            # RAGAS evaluation
+│   ├── feature1b_dataset_creation.ipynb                      # Synthetic Q&A dataset generation
+│   ├── feature2a_structured_outputs.ipynb                    # Structured JSON outputs with evidence levels
+│   ├── feature3a_advanced_retrieval.ipynb                    # BM25, hybrid retrieval, metadata filtering
+│   ├── feature3b_conversation.ipynb                          # Multi-turn conversation management
+│   ├── feature3c_query_techniques.ipynb                      # Query expansion and HyDE
+│   ├── feature3d_context_enrichment.ipynb                    # Neighbouring-chunk context expansion
 │   └── feature4a_tools.ipynb – feature4e_rag_subagent.ipynb  # Tools and agent workflows
 └── src/sme_kt_zh_collaboration_rag/
-    ├── feature0_baseline_rag.py        # Five-step RAG pipeline (chunking, embedding, retrieval, generation)
-    ├── feature0_ingestion.py           # Parser comparison, chunking utilities, token analysis
-    ├── feature1_evaluation.py          # Shared EVALUATION_QUERIES with ground-truth answers
-    ├── feature3_advanced_retrieval.py  # BM25, hybrid, metadata-filter retrieval
-    └── main.py                         # FastAPI server entry point (controller + frontend)
+    ├── db/
+    │   ├── vs_text/                                          # ChromaDB collection for text chunks (OpenAI embeddings)
+    │   └── vs_image/                                         # ChromaDB collection for image chunks (Qwen3-VL embeddings)
+    ├── feature0_baseline_rag.py                              # Five-step RAG pipeline (chunking, embedding, retrieval, generation)
+    ├── feature0_ingestion.py                                 # Parser comparison, chunking utilities, token analysis
+    ├── feature1_evaluation.py                                # Shared EVALUATION_QUERIES with ground-truth answers
+    ├── feature3_advanced_retrieval.py                        # BM25, hybrid, metadata-filter retrieval
+    └── main.py                                               # FastAPI server entry point (controller + frontend)
 ```
+
+---
+
+## Demo: Building the vector stores (`demo_build_db.ipynb`)
+
+A one-off setup notebook that populates both ChromaDB collections from the raw corpus in `data/`.
+
+| Step | What it does |
+|------|--------------|
+| Load all chunks | `load_chunks()` parses every file in `data/` and splits them into chunks |
+| Build text store | Embeds text chunks with OpenAI `text-embedding-3-small` and persists to `db/vs_text/` |
+| Build image store | Embeds image chunks with Qwen3-VL and persists to `db/vs_image/` |
+
+Run this notebook once before using any feature notebook that depends on a pre-built vector store. Both stores are written to `backend/src/sme_kt_zh_collaboration_rag/db/`.
 
 ---
 
@@ -147,7 +164,7 @@ RESET_VS=1 python -m sme_kt_zh_collaboration_rag.feature0_baseline_rag
 MODEL=gpt-4o BACKEND=openai python -m sme_kt_zh_collaboration_rag.feature0_baseline_rag
 ```
 
-The vector store is written to `backend/data_vs.db`. On subsequent runs, re-embedding is skipped if the store already exists (`RESET_VS=1` forces a rebuild).
+The vector stores are written to `backend/src/sme_kt_zh_collaboration_rag/db/vs_text/` (text) and `backend/src/sme_kt_zh_collaboration_rag/db/vs_image/` (images). On subsequent runs, re-embedding is skipped if the stores already exist (`RESET_VS=1` forces a rebuild).
 
 ---
 

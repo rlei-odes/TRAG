@@ -84,8 +84,6 @@ class CustomRAG(RAG):
         unique_sources = list(
             {getattr(s, "id", None): s for s in answer.sources}.values()
         )
-        print(f"Retrieved sources: {[s.id for s in unique_sources]}")  # TODO
-        print(f"LLM used: {relevant_source_ids}")  # TODO
         return answer.model_copy(
             update={
                 "content": [MessageContent(type="text", text=content)],

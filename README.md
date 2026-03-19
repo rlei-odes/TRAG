@@ -1,23 +1,18 @@
-# SME-KT-ZH Collaboration — Sustainability RAG
+# SME-KT-ZH Collaboration: RAG Prototyp
 
-A collaborative prototyping project building an open-source RAG (Retrieval-Augmented Generation) backbone that SMEs can adapt for their own sustainability
-knowledge management.
+A collaborative prototyping project building an open-source RAG (Retrieval-Augmented Generation) backbone that SMEs can adapt for their own knowledge management.
 
 ## Scenario
+**PrimePack AG** sells packaging products (pallets, cardboard boxes, tape) sourced from multiple suppliers. Sustainability claims are increasingly important, from customers requiring CSRD-compliant data to procurement needing to evaluate supplier evidence quality.
 
-**PrimePack AG** sells packaging products (pallets, cardboard boxes, tape) sourced from multiple suppliers. Sustainability claims are increasingly important,
-from customers requiring CSRD-compliant data to procurement needing to evaluate supplier evidence quality.
-
-The core challenge: sustainability information is spread across many documents (EPDs, supplier brochures, company reports, regulatory frameworks), claims have
-widely varying evidence quality, and employees must answer questions like:
+The core challenge: sustainability information is spread across many documents (EPDs, supplier brochures, company reports, regulatory frameworks), claims have widely varying evidence quality, and employees must answer questions like:
 
 - *"What does Supplier A claim for Product X, and can we trust it?"*
 - *"Which suppliers are compliant with our EPD requirement?"*
 - *"Can we tell a customer that this tape is PFAS-free?"*
 - *"Which evidence is missing before we can respond?"*
 
-The RAG assistant should **cite sources explicitly**, **separate facts from claims**, **highlight gaps and conflicts**, and **refuse to conclude when evidence
-is insufficient**.
+The RAG assistant should **cite sources explicitly**, **separate facts from claims**, **highlight gaps and conflicts**, and **refuse to conclude when evidence is insufficient**.
 
 ---
 
@@ -28,7 +23,7 @@ Requires Python version >=3.12
 ```bash
 # Create and activate a virtual environment
 python -m venv rag_venv
-source rag_venv/bin/activate  # on Windows: venv\Scripts\activate
+source rag_venv/bin/activate  # on Windows: rag_venv\Scripts\activate
 
 # Install requirements
 pip install --upgrade pip
@@ -44,8 +39,7 @@ pip install -e backend/
 
 ### Ollama (local LLM)
 
-[Ollama](https://ollama.com) lets you run open-weight language models locally — no API key, no data sent externally. Use it as a privacy-preserving alternative
-to the OpenAI backend.
+[Ollama](https://ollama.com) lets you run open-weight language models locally -> no API key, no data sent externally. Use it as a privacy-preserving alternative to the OpenAI backend.
 
 **Install Ollama**
 
@@ -68,47 +62,23 @@ ollama pull mistral-nemo:12b
 ollama list
 ```
 
-The server must be running whenever you use `BACKEND=ollama`. On macOS the desktop app starts the server automatically; on Linux run `ollama serve` in a
-separate terminal.
-
-**Recommended models**
-
-| Model              | Size  | Notes                                           |
-|--------------------|-------|-------------------------------------------------|
-| `mistral-nemo:12b` | ~7 GB | Default for this workshop. Good quality on CPU. |
-| `llama3.2:3b`      | ~2 GB | Faster on CPU, weaker reasoning                 |
-| `qwen2.5:7b`       | ~5 GB | Strong multilingual support (German, French)    |
-
-### Renku environment
-
-```bash
-# Start Ollama pointing to the shared model directory (avoids re-downloading)
-OLLAMA_MODELS=$RENKU_MOUNT_DIR/ollama_models ollama serve &
-
-# Pull a model (only needed once — stored in the shared directory)
-ollama pull mistral-nemo:12b
-
-# List available models
-ollama list
-```
+The server must be running whenever you use `BACKEND=ollama`. On macOS the desktop app starts the server automatically; on Linux run `ollama serve` in a separate terminal.
 
 ---
 
 ## Running the Notebooks (JupyterLab)
 
-The workshop notebooks require JupyterLab. Start it from the project root after activating your virtual environment:
+The workshop notebooks require JupyterLab. You can run them in an IDE or start it from the project root after activating your virtual environment:
 
 ```bash
 jupyter lab
 ```
 
-JupyterLab opens in your browser at `http://localhost:8888`. Navigate to `backend/notebooks/` in the file browser on the left and open
-`feature0a_baseline_rag.ipynb` to start.
+JupyterLab opens in your browser at `http://localhost:8888`. Navigate to `backend/notebooks/` in the file browser on the left and open `feature0a_baseline_rag.ipynb` to start.
 
-**Running cells:** Use `Shift+Enter` to run a cell and advance to the next one. Run cells top to bottom, each notebook must be executed in order within a
-session.
+**Running cells:** Use `Shift+Enter` to run a cell and advance to the next one. Run cells top to bottom, each notebook must be executed in order within a session.
 
-**OpenAI API key:** Set the key before starting JupyterLab, or export it inside a cell:
+**OpenAI API key:** If you want to use OpenAI models, you need to set an OpenAI API key. Set the key before starting JupyterLab, or export it inside a cell:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -125,15 +95,19 @@ This launches the FastAPI backend and the Next.js chat frontend together.
 
 **Prerequisites:** Python ≥ 3.12, Node.js / npm, and either an OpenAI API key or a running Ollama server (see [Ollama](#ollama-local-llm) below).
 
-**Step 1 — install Python dependencies** (skip if already done)
+**Step 1: Install Python dependencies** (skip if already done)
 
 ```bash
 python -m venv rag_venv
-source rag_venv/bin/activate  # on Windows: venv\Scripts\activate
+source rag_venv/bin/activate  # on Windows: rag_venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Step 2 — create `.env.local`** (required for `make run`)
+**Step 2: Create vector store**
+
+Run `backend/notebooks/demo_build_db.ipynb` once to populate the shared vector stores. It might take aome time to create the image vector store.
+
+**Step 3: Create `.env.local`** (required for `make run`)
 
 The Makefile reads your API key from a `.env.local` file in the project root. Create it with:
 
@@ -149,7 +123,7 @@ OPENAI_API_KEY=sk-...
 
 > If you run the backend without the Makefile, you can export the key in your shell instead and skip this file — see the "Without the Makefile" command in Step 3.
 
-**Step 3 — start the backend**
+**Step 4: Start the backend**
 
 With the Makefile:
 
@@ -169,7 +143,7 @@ BACKEND=ollama python -m sme_kt_zh_collaboration_rag.main
 
 The server starts at `http://localhost:8080`.
 
-**Step 4 — start the frontend** (in a separate terminal)
+**Step 5: Start the frontend** (in a separate terminal)
 
 ```bash
 cd frontend
@@ -177,7 +151,7 @@ npm install # first time only
 npm run dev
 ```
 
-**Step 5 — open the app**
+**Step 6: Open the app**
 
 Go to `http://localhost:3000` in your browser.
 
@@ -226,9 +200,9 @@ Run `demo_build_db.ipynb` once before the feature notebooks to populate the shar
 
 ```
 .
-├── backend/                   # RAG pipeline application
-│   ├── notebooks/             # Workshop notebooks
-│   │   ├── demo_build_db.ipynb                  # One-off setup: build text + image vector stores
+├── backend/                                # RAG pipeline application
+│   ├── notebooks/                          # Workshop notebooks
+│   │   ├── demo_build_db.ipynb             # One-off setup: build text + image vector stores
 │   │   ├── feature0a_baseline_rag.ipynb
 │   │   ├── feature0b_ingestion.ipynb
 │   │   ├── feature1a_evaluation.ipynb
@@ -241,28 +215,28 @@ Run `demo_build_db.ipynb` once before the feature notebooks to populate the shar
 │   │   └── feature4a_tools.ipynb – feature4e_rag_subagent.ipynb
 │   └── src/sme_kt_zh_collaboration_rag/
 │       ├── db/
-│       │   ├── vs_text/                # ChromaDB collection — text chunks (OpenAI embeddings)
-│       │   └── vs_image/               # ChromaDB collection — image chunks (Qwen3-VL embeddings)
-│       ├── feature0_baseline_rag.py    # Five-step pipeline (chunking, embedding, retrieval, generation)
-│       ├── feature0_ingestion.py       # Parser comparison, chunking utilities, token analysis
-│       ├── feature1_evaluation.py      # Shared evaluation queries and ground-truth answers
+│       │   ├── vs_text/                    # ChromaDB collection: text chunks (OpenAI embeddings)
+│       │   └── vs_image/                   # ChromaDB collection: image chunks (Qwen3-VL embeddings)
+│       ├── feature0_baseline_rag.py        # Five-step pipeline (chunking, embedding, retrieval, generation)
+│       ├── feature0_ingestion.py           # Parser comparison, chunking utilities, token analysis
+│       ├── feature1_evaluation.py          # Shared evaluation queries and ground-truth answers
 │       ├── feature3_advanced_retrieval.py
-│       └── main.py                     # FastAPI server entry point
+│       └── main.py                         # FastAPI server entry point
 │
-├── conversational-toolkit/    # Reusable RAG components (toolkit library)
+├── conversational-toolkit/                 # Reusable RAG components (toolkit library)
 │   └── src/conversational_toolkit/
-│       ├── agents/            # RAG agent (retrieval + generation)
-│       ├── api/               # FastAPI server and routes
-│       ├── chunking/          # PDF, Excel, Markdown chunkers
-│       ├── embeddings/        # Sentence Transformer embeddings
-│       ├── llms/              # OpenAI, Ollama, local LLM backends
-│       ├── retriever/         # Vector store retriever, BM25, hybrid
-│       ├── utils/             # Prompt building, query expansion, RRF
-│       └── vectorstores/      # ChromaDB vector store
+│       ├── agents/                         # RAG agent (retrieval + generation)
+│       ├── api/                            # FastAPI server and routes
+│       ├── chunking/                       # PDF, Excel, Markdown chunkers
+│       ├── embeddings/                     # Sentence Transformer embeddings
+│       ├── llms/                           # OpenAI, Ollama, local LLM backends
+│       ├── retriever/                      # Vector store retriever, BM25, hybrid
+│       ├── utils/                          # Prompt building, query expansion, RRF
+│       └── vectorstores/                   # ChromaDB vector store
 │
-├── data/                      # Document corpus (see below)
+├── data/                                   # Document corpus
 │
-└── frontend/                  # Next.js chat frontend
+└── frontend/                               # Next.js chat frontend
 ```
 
 ---
@@ -285,15 +259,15 @@ All documents are in `data/`. The file prefix defines the document type:
 
 Designed with deliberate flaws to demonstrate RAG failure modes.
 
-| File                                         | Type                   | What it demonstrates                                                                                                                                          |
-|----------------------------------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ART_product_catalog.md`                     | Internal policy        | Portfolio scope, evidence-level policy, customer communication rules, open action items. The machine-readable product table lives in `product_overview.xlsx`. |
-| `ART_internal_procurement_policy.md`         | Internal policy        | Evidence levels (A–D), EPD requirements, PFAS policy                                                                                                          |
-| `ART_supplier_brochure_tesa_ECO.md`          | Supplier marketing     | **Unverified claim** — 68% CO₂ reduction, no EPD                                                                                                              |
-| `ART_supplier_brochure_CPR_wood_pallet.md`   | Supplier marketing     | **Unverified LCA figures**; FSC claim without certificate                                                                                                     |
-| `ART_logylight_incomplete_datasheet.md`      | Supplier datasheet     | **Missing data** — all LCA fields "not yet available"                                                                                                         |
-| `ART_relicyc_logypal1_old_datasheet_2021.md` | Superseded document    | **Temporal conflict** — 2021 figure vs. 2023 verified EPD                                                                                                     |
-| `ART_customer_inquiry_frische_felder.md`     | Customer communication | CSRD request with open [ACTION] items                                                                                                                         |
+| File | Type | What it demonstrates |
+|--------|--------|--------|
+| `ART_product_catalog.pdf` | Internal policy | Portfolio scope, evidence-level policy, customer communication rules, open action items. The machine-readable product table lives in `product_overview.xlsx`. |
+| `ART_internal_procurement_policy.pdf` | Internal policy | Evidence levels (A–D), EPD requirements, PFAS policy |
+| `ART_supplier_brochure_tesa_ECO.pdf` | Supplier marketing | **Unverified claim**: 68% CO₂ reduction, no EPD |
+| `ART_supplier_brochure_CPR_wood_pallet.pdf` | Supplier marketing | **Unverified LCA figures**; FSC claim without certificate |
+| `ART_logylight_incomplete_datasheet.pdf` | Supplier datasheet | **Missing data**: all LCA fields "not yet available" |
+| `ART_relicyc_logypal1_old_datasheet_2021.pdf` | Superseded document | **Temporal conflict**: 2021 figure vs. 2023 verified EPD |
+| `ART_customer_inquiry_frische_felder.pdf` | Customer communication | CSRD request with open [ACTION] items |
 
 ---
 
@@ -336,17 +310,17 @@ Supplier-provided specs, datasheets, and article documents. Naming: `SPEC_{categ
 | `SPEC_pallet_CPR_plastic.pdf`          | CPR System    | Plastic Pallet (32-102)      |
 | `SPEC_pallet_CPR_wood.pdf`             | CPR System    | Wooden Pallet (32-101)       |
 | `SPEC_pallet_CPR_recycled_plastic.pdf` | CPR System    | Recycled plastic pallet PR12 |
-| `SPEC_pallet_relicyc_logypal1.pdf`     | Relicyc       | Logypal 1 — product info     |
+| `SPEC_pallet_relicyc_logypal1.pdf`     | Relicyc       | Logypal 1: product info     |
 | `SPEC_pallet_relicyc_1208MR.pdf`       | Relicyc       | Pallet 1208MR                |
-| `SPEC_pallet_stabilplastik_ep08.pdf`   | StabilPlastik | EP 08 — datasheet            |
+| `SPEC_pallet_stabilplastik_ep08.pdf`   | StabilPlastik | EP 08: datasheet            |
 
 **Tape:**
 
 | File                                            | Supplier | Product                                     |
 |-------------------------------------------------|----------|---------------------------------------------|
 | `SPEC_tape_CST_synthetic_rubber.pdf`            | CST      | Synthetic rubber tape                       |
-| `SPEC_tape_WAT_central_brand.pdf`               | WAT      | WAT tape — article document                 |
-| `SPEC_tape_WAT_260.pdf`                         | WAT      | WAT 260 — technical data sheet              |
+| `SPEC_tape_WAT_central_brand.pdf`               | WAT      | WAT tape: article document                 |
+| `SPEC_tape_WAT_260.pdf`                         | WAT      | WAT 260: technical data sheet              |
 | `SPEC_tape_tesa_tesapack58297.pdf`              | Tesa     | tesapack 58297 (German)                     |
 | `SPEC_tape_tesa_sustainability_report_2024.pdf` | Tesa     | Company sustainability report 2024 (German) |
 
@@ -362,9 +336,9 @@ Supplier-provided specs, datasheets, and article documents. Naming: `SPEC_{categ
 
 | File                                         | Content                                                |
 |----------------------------------------------|--------------------------------------------------------|
-| `REF_ghg_protocol_product_lca.pdf`           | GHG Protocol — Product LCA standard                    |
-| `REF_ghg_protocol_corporate_value_chain.pdf` | GHG Protocol — Scope 3 / value chain                   |
-| `REF_ghg_protocol_corporate_standard.pdf`    | GHG Protocol — revised corporate standard              |
+| `REF_ghg_protocol_product_lca.pdf`           | GHG Protocol: Product LCA standard                    |
+| `REF_ghg_protocol_corporate_value_chain.pdf` | GHG Protocol: Scope 3 / value chain                   |
+| `REF_ghg_protocol_corporate_standard.pdf`    | GHG Protocol: revised corporate standard              |
 | `REF_eu_csrd.pdf`                            | EU Corporate Sustainability Reporting Directive (CSRD) |
 | `REF_eu_climate_reporting_guidelines.pdf`    | EU guidelines on climate-related reporting             |
 | `REF_ch_eu_sustainability_obligations.pdf`   | Swiss/EU sustainability obligations                    |
@@ -383,28 +357,24 @@ Supplier-provided specs, datasheets, and article documents. Naming: `SPEC_{categ
 
 ## Key Design Decisions in the Dataset
 
-**Evidence quality varies deliberately.** Products span verified EPDs (Level A) to missing data (Level D). The RAG must distinguish these — not just retrieve
-numbers.
+**Evidence quality varies deliberately.** Products span verified EPDs (Level A) to missing data (Level D). The RAG must distinguish these, not just retrieve numbers.
 
-**Conflicts are intentional.** `ART_relicyc_logypal1_old_datasheet_2021.md` and `EPD_pallet_relicyc_logypal1.pdf` contain different GWP figures. The RAG should
-flag the conflict and prefer the more recent, verified source.
+**Conflicts are intentional.** `ART_relicyc_logypal1_old_datasheet_2021.md` and `EPD_pallet_relicyc_logypal1.pdf` contain different GWP figures. The RAG should flag the conflict and prefer the more recent, verified source.
 
-**Gaps are part of the answer.** For the LogyLight pallet and PFAS declarations, the correct answer is "we don't have this data." A RAG that fabricates an
-answer here fails.
+**Gaps are part of the answer.** For the LogyLight pallet and PFAS declarations, the correct answer is "we don't have this data." A RAG that fabricates an answer here fails.
 
-**The portfolio boundary matters.** The product catalog defines which products exist. Queries about products outside the catalog (e.g., "Lara Pallet") should be
-answered as "not in our portfolio."
+**The portfolio boundary matters.** The product catalog defines which products exist. Queries about products outside the catalog (e.g., "Lara Pallet") should be answered as "not in our portfolio."
 
 ---
 
 ## LLM Backends
 
-`BACKEND` must always be set explicitly — there is no default.
+`BACKEND` must always be set explicitly, there is no default.
 
-| Backend | Command                                                                      | Notes                                                               |
-|---------|------------------------------------------------------------------------------|---------------------------------------------------------------------|
-| Ollama  | `BACKEND=ollama python -m sme_kt_zh_collaboration_rag.feature0_baseline_rag` | Requires `ollama serve` and `ollama pull mistral-nemo:12b`          |
-| OpenAI  | `BACKEND=openai python -m ...`                                               | Requires `OPENAI_API_KEY` env var or `/secrets/OPENAI_API_KEY` file |
+| Backend | Command | Notes |
+|-----|-----|-----|
+| Ollama | `BACKEND=ollama python -m sme_kt_zh_collaboration_rag.feature0_baseline_rag` | Requires `ollama serve` and `ollama pull mistral-nemo:12b` |
+| OpenAI  | `BACKEND=openai python -m ...` | Requires `OPENAI_API_KEY` env var or `/secrets/OPENAI_API_KEY` file |
 
 Override the model: `MODEL=gpt-4o BACKEND=openai python -m ...`
 
@@ -412,8 +382,7 @@ Override the model: `MODEL=gpt-4o BACKEND=openai python -m ...`
 
 ## Contributing
 
-We welcome contributions: new feature notebooks, improvements to the toolkit library, additional documents in the dataset, or bug fixes. The steps below walk
-you through the full workflow from cloning to an approved pull request.
+We welcome contributions: new feature notebooks, improvements to the toolkit library, additional documents in the dataset, or bug fixes. The steps below walk you through the full workflow from cloning to an approved pull request.
 
 ### 1. Clone the repository
 
@@ -427,7 +396,7 @@ cd sme-kt-zh-collaboration-rag
 ```bash
 # Create and activate a virtual environment
 python -m venv rag_venv
-source rag_venv/bin/activate  # on Windows: venv\Scripts\activate
+source rag_venv/bin/activate  # on Windows: verag_venvnv\Scripts\activate
 
 # Install all dependencies including the two editable packages
 pip install -r requirements.txt
@@ -446,28 +415,25 @@ git checkout -b feature/my-descriptive-branch-name
 
 Branch naming conventions:
 
-- `feature/` — new functionality or notebooks
-- `fix/` — bug fixes
-- `docs/` — documentation-only changes
-- `data/` — additions or corrections to the document corpus
+- `feature/`: new functionality or notebooks
+- `fix/`: bug fixes
+- `docs/`: documentation-only changes
+- `data/`: additions or corrections to the document corpus
 
 ### 4. Make your changes
 
 A few guidelines depending on what you are changing:
 
 **Notebooks (`backend/notebooks/`):**
-
 - Keep cells focused and commented.
 - Follow the existing naming convention: `feature{N}_{short_topic}.ipynb`.
 
 **Toolkit library (`conversational-toolkit/`):**
-
 - Add or update unit tests in the corresponding `tests/` directory.
 - Run `pytest` before committing to confirm nothing is broken.
 - Keep new classes and functions typed (the project uses `mypy`).
 
 **Dataset (`data/`):**
-
 - Follow the file-prefix convention: `EPD_`, `SPEC_`, `REF_`, `ART_`, or `EVALUATION_`.
 - If adding a document that the RAG corpus should index, also add an entry to `README.md` under the appropriate `Dataset` subsection.
 - If a new document introduces a deliberate flaw (conflict, missing data, unverified claim), describe it in the table.
@@ -482,15 +448,12 @@ pytest
 Fix any reported issues before continuing.
 
 ### 6. Commit your changes
-
 Write concise commit messages (e.g. `fix chunker token-limit handling`, `add EPD for StabilPlastik EP08`).
 
 ```bash
 git add path/to/changed/files
 git commit -m "short description of what and why"
 ```
-
-Avoid `git add .` when notebooks are involved, it is easy to accidentally commit large binary outputs.
 
 ### 7. Push and open a pull request
 
@@ -511,8 +474,7 @@ Then open a pull request on GitHub:
 
 ### 8. Respond to review feedback
 
-Address comments by pushing additional commits to the same branch, do not open a new PR. Once all review threads are resolved and the CI checks pass, a
-maintainer will merge your PR into `main`.
+Address comments by pushing additional commits to the same branch, do not open a new PR. Once all review threads are resolved and the CI checks pass, a maintainer will merge your PR into `main`.
 
 ---
 

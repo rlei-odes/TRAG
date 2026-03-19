@@ -8,27 +8,27 @@ This package (`sme_kt_zh_collaboration_rag`) contains the notebooks and the supp
 
 ```
 backend/
-├── notebooks/                                                # Workshop notebooks
-│   ├── demo_build_db.ipynb                                   # One-off script to build the text and image vector stores
-│   ├── feature0a_baseline_rag.ipynb                          # Baseline RAG pipeline
-│   ├── feature0b_ingestion.ipynb                             # Document ingestion and chunking deep-dive
-│   ├── feature1a_evaluation.ipynb                            # RAGAS evaluation
-│   ├── feature1b_dataset_creation.ipynb                      # Synthetic Q&A dataset generation
-│   ├── feature2a_structured_outputs.ipynb                    # Structured JSON outputs with evidence levels
-│   ├── feature3a_advanced_retrieval.ipynb                    # BM25, hybrid retrieval, metadata filtering
-│   ├── feature3b_conversation.ipynb                          # Multi-turn conversation management
-│   ├── feature3c_query_techniques.ipynb                      # Query expansion and HyDE
-│   ├── feature3d_context_enrichment.ipynb                    # Neighbouring-chunk context expansion
+├── notebooks/                               # Workshop notebooks
+│   ├── demo_build_db.ipynb                  # One-off script to build the text and image vector stores
+│   ├── feature0a_baseline_rag.ipynb         # Baseline RAG pipeline
+│   ├── feature0b_ingestion.ipynb            # Document ingestion and chunking deep-dive
+│   ├── feature1a_evaluation.ipynb           # RAGAS evaluation
+│   ├── feature1b_dataset_creation.ipynb     # Synthetic Q&A dataset generation
+│   ├── feature2a_structured_outputs.ipynb   # Structured JSON outputs with evidence levels
+│   ├── feature3a_advanced_retrieval.ipynb   # BM25, hybrid retrieval, metadata filtering
+│   ├── feature3b_conversation.ipynb         # Multi-turn conversation management
+│   ├── feature3c_query_techniques.ipynb     # Query expansion and HyDE
+│   ├── feature3d_context_enrichment.ipynb   # Neighbouring-chunk context expansion
 │   └── feature4a_tools.ipynb – feature4e_rag_subagent.ipynb  # Tools and agent workflows
 └── src/sme_kt_zh_collaboration_rag/
     ├── db/
-    │   ├── vs_text/                                          # ChromaDB collection for text chunks (OpenAI embeddings)
-    │   └── vs_image/                                         # ChromaDB collection for image chunks (Qwen3-VL embeddings)
-    ├── feature0_baseline_rag.py                              # Five-step RAG pipeline (chunking, embedding, retrieval, generation)
-    ├── feature0_ingestion.py                                 # Parser comparison, chunking utilities, token analysis
-    ├── feature1_evaluation.py                                # Shared EVALUATION_QUERIES with ground-truth answers
-    ├── feature3_advanced_retrieval.py                        # BM25, hybrid, metadata-filter retrieval
-    └── main.py                                               # FastAPI server entry point (controller + frontend)
+    │   ├── vs_text/                         # ChromaDB collection for text chunks (OpenAI embeddings)
+    │   └── vs_image/                        # ChromaDB collection for image chunks (Qwen3-VL embeddings)
+    ├── feature0_baseline_rag.py             # Five-step RAG pipeline (chunking, embedding, retrieval, generation)
+    ├── feature0_ingestion.py                # Parser comparison, chunking utilities, token analysis
+    ├── feature1_evaluation.py               # Shared EVALUATION_QUERIES with ground-truth answers
+    ├── feature3_advanced_retrieval.py       # BM25, hybrid, metadata-filter retrieval
+    └── main.py                              # FastAPI server entry point (controller + frontend)
 ```
 
 ---
@@ -63,7 +63,7 @@ Introduces the five-stage RAG loop and demonstrates it end-to-end against the Pr
 
 ### Feature 0b: Document Ingestion (`feature0b_ingestion.ipynb`)
 
-Deep-dive into document parsing and chunking — separate from the baseline so the ingestion workflow can be explored independently.
+Deep-dive into document parsing and chunking; separate from the baseline so the ingestion workflow can be explored independently.
 
 - PDF parser comparison: markitdown vs. docling
 - Chunking strategies: fixed-size, header-based, paragraph-aware

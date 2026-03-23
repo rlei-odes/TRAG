@@ -161,7 +161,7 @@ def compare_strategies(file_path: str) -> dict[str, tuple[list[Chunk], ChunkStat
         chunks = fn(file_path, **kwargs)
         stats = analyze_chunks(chunks, name)
         results[name] = (chunks, stats)
-        logger.info(f"  {stats}")
+        logger.info(f"{stats}")
 
     return results
 

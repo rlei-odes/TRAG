@@ -11,6 +11,9 @@ export interface Message {
     sources?: Source[];
     reaction?: Reaction;
     follow_up_questions?: string[];
+    query_duration_ms?: number;
+    tokens_per_second?: number;
+    llm_model?: string;
 }
 
 export interface Source {
@@ -69,12 +72,13 @@ class MessageService extends ApiService {
         }
     }
 
-    async createStream(input: UserInput, onMessage: (message: Message) => void, onError: () => void, onEnd: () => void) {
+    async createStream(input: UserInput, onMessage: (message: Message) => void, onError: () => void, onEnd: () => void, signal?: AbortSignal) {
         try {
             const postUrl = `${this.apiUrl}/stream`;
             const response = await this.fetchApi(postUrl, {
                 method: "POST",
                 body: JSON.stringify(input),
+                signal,
             });
 
             const reader = response.body?.getReader();
@@ -113,9 +117,13 @@ class MessageService extends ApiService {
                 }
                 onEnd();
             }
-        } catch (e) {
-            console.log("error", e);
-            onError();
+        } catch (e: any) {
+            if (e?.name === "AbortError") {
+                onEnd();  // user stopped — keep partial message, don't show error
+            } else {
+                console.log("error", e);
+                onError();
+            }
             return null;
         }
     }

@@ -1,4 +1,4 @@
-import React, { FunctionComponent } from "react";
+import React, { FunctionComponent, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import RemarkMath from "remark-math";
 import RemarkBreaks from "remark-breaks";
@@ -7,15 +7,80 @@ import RemarkGfm from "remark-gfm";
 import RehypeHighlight from "rehype-highlight";
 import RehypeSanitize from "rehype-sanitize";
 import RehypeRaw from "rehype-raw";
+import { defaultSchema } from "hast-util-sanitize";
 import { cn } from "@/lib/lorem";
+import { Source } from "@/services/message";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ExternalLink } from "lucide-react";
 
-export const Markdown: FunctionComponent<{ content: string }> = ({ content }) => (
+const DOC_EXT = /\.(pdf|xlsx|xls|docx|doc|md|txt|csv)$/i;
+
+// Allow source:// protocol so the Markdown a-handler can intercept citation links
+const sanitizeSchema = {
+    ...defaultSchema,
+    protocols: {
+        ...defaultSchema.protocols,
+        href: [...(defaultSchema.protocols?.href ?? []), "source"],
+    },
+};
+
+// Convert (filename.pdf) plain-text references to markdown links,
+// but only for filenames that actually exist in the provided sources.
+const DOC_REF_RE = /\(([^()\s][^()]*\.(pdf|xlsx|xls|docx|doc|md|txt|csv))\)/gi;
+function linkifyDocRefs(content: string, sources?: Source[]): string {
+    const knownFiles = new Set(
+        (sources ?? []).map((s) => s.metadata?.source_file as string).filter(Boolean)
+    );
+    return content.replace(DOC_REF_RE, (match, filename) => {
+        if (knownFiles.size > 0 && !knownFiles.has(filename)) return match;
+        return `[${filename}](<${filename}>)`;
+    });
+}
+
+// Inline citation link that shows a source-content popup on click
+const SourceCitationLink: FunctionComponent<{ filename: string; sources?: Source[] }> = ({ filename, sources }) => {
+    const [open, setOpen] = useState(false);
+    const fileUrl = `/api/v1/files/${encodeURIComponent(filename)}`;
+    const source = sources?.find((s) => (s.metadata?.source_file as string) === filename);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <button className="inline text-blue-600 dark:text-blue-400 underline underline-offset-2 decoration-blue-600/30 hover:decoration-blue-600 transition-colors cursor-pointer text-[0.9em] font-medium">
+                    {filename}
+                </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[520px] max-h-[420px] flex flex-col p-0 overflow-hidden" align="start">
+                <div className="px-3 py-2 border-b flex items-center justify-between">
+                    <span className="text-xs font-semibold truncate pr-2">{filename}</span>
+                    <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <ExternalLink className="w-3 h-3" />
+                        Öffnen
+                    </a>
+                </div>
+                {source && (
+                    <div className="px-3 py-2 overflow-auto text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                        {source.content}
+                    </div>
+                )}
+            </PopoverContent>
+        </Popover>
+    );
+};
+
+export const Markdown: FunctionComponent<{ content: string; sources?: Source[] }> = ({ content, sources }) => (
     <ReactMarkdown
         remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
         rehypePlugins={[
             RehypeKatex,
             RehypeRaw,
-            RehypeSanitize,
+            [RehypeSanitize, sanitizeSchema],
             [
                 RehypeHighlight,
                 {
@@ -34,8 +99,38 @@ export const Markdown: FunctionComponent<{ content: string }> = ({ content }) =>
             p: (pProps) => <p {...pProps} className={cn(pProps.className, "mb-4 leading-7 text-foreground")} dir="auto" />,
             a: (aProps) => {
                 const href = aProps.href || "";
+
+                // source:// links are in-text citations → show content popup
+                if (href.startsWith("source://")) {
+                    const filename = decodeURIComponent(href.replace("source://", ""));
+                    return <SourceCitationLink filename={filename} sources={sources} />;
+                }
+
+                const isHttp = /^https?:\/\//i.test(href);
                 const isInternal = /^\/#/i.test(href);
-                const target = isInternal ? "_self" : aProps.target ?? "_blank";
+                const isDocFile = DOC_EXT.test(href);
+
+                // LLM sometimes embeds filenames as relative links → rewrite to backend file endpoint
+                if (!isHttp && !isInternal && isDocFile && href !== "") {
+                    const fileUrl = `/api/v1/files/${encodeURIComponent(href)}`;
+                    return (
+                        <a
+                            href={fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(
+                                aProps.className,
+                                "text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline decoration-blue-600/30 hover:decoration-blue-600 transition-colors underline-offset-2",
+                            )}
+                        >
+                            {aProps.children}
+                        </a>
+                    );
+                }
+                if (!isHttp && !isInternal && href !== "") {
+                    return <span className="text-foreground">{aProps.children}</span>;
+                }
+                const target = isInternal ? "_self" : "_blank";
                 return (
                     <a
                         {...aProps}
@@ -93,6 +188,6 @@ export const Markdown: FunctionComponent<{ content: string }> = ({ content }) =>
             td: (tdProps) => <td {...tdProps} className="px-4 py-3 text-left text-foreground" />,
         }}
     >
-        {content}
+        {linkifyDocRefs(content, sources)}
     </ReactMarkdown>
 );

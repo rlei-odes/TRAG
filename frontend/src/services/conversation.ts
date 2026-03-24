@@ -1,12 +1,32 @@
 import { ApiService } from "./api";
 import { Message, Reaction } from "@/services/message";
 
+export interface RagConfigSnapshot {
+    retriever_top_k?: number;
+    rrf_k?: number;
+    bm25_enabled?: boolean;
+    reranking_enabled?: boolean;
+    reranking_candidate_pool?: number;
+    hyde_enabled?: boolean;
+    query_expansion?: number;
+    llm_backend?: string;
+    llm_model?: string;
+    utility_llm_model?: string;
+    embedding_backend?: string;
+    embedding_model?: string;
+    vs_type?: string;
+}
+
 export interface Conversation {
     id: string;
     title: string;
     update_timestamp: number;
     create_timestamp?: number;
     messages?: Message[];
+    kb_id?: string;
+    kb_name?: string;
+    rag_config_snapshot?: RagConfigSnapshot;
+    session_label?: string;
 }
 
 class ConversationService extends ApiService {
@@ -57,6 +77,15 @@ class ConversationService extends ApiService {
             }
             const deleteUrl = `${this.apiUrl}/${conversationId}`;
             const response = await this.fetchApi(deleteUrl, { method: "DELETE" });
+            return response.json();
+        } catch {
+            return null;
+        }
+    }
+
+    async deleteAll(): Promise<number | null> {
+        try {
+            const response = await this.fetchApi(this.apiUrl, { method: "DELETE" });
             return response.json();
         } catch {
             return null;

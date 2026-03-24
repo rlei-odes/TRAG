@@ -15,14 +15,8 @@ def message_to_ollama(msg: LLMMessage) -> dict[str, Any]:
         "role": msg.role,
     }
 
-    # Convert MessageContent list to Ollama format
-    if len(msg.content) == 1 and msg.content[0].type == "text":
-        message["content"] = msg.content[0].text or ""
-    else:
-        message["content"] = [
-            {"type": c.type, "text": c.text} if c.type == "text" else {"type": "image_url", "image_url": c.image_url}
-            for c in msg.content
-        ]
+    # Ollama SDK requires content as a plain string — concatenate all text parts
+    message["content"] = "".join(c.text or "" for c in msg.content if c.type == "text")
 
     if msg.name:
         message["name"] = msg.name
@@ -56,6 +50,8 @@ class OllamaLLM(LLM):
         model_name: str = "llama3.1",
         response_format: Literal["json"] | None = None,
         host: str | None = None,
+        keep_alive: int | str = -1,
+        num_ctx: int = 16384,
     ):
         super().__init__()
         self.client = AsyncClient(host=host)
@@ -65,8 +61,10 @@ class OllamaLLM(LLM):
         self.tools = tools
         self.tool_choice = tool_choice
         self.response_format: Literal["json"] | None = response_format
+        self.keep_alive = keep_alive
+        self.num_ctx = num_ctx
         logger.debug(
-            f"Ollama LLM loaded: {model_name}; temperature: {temperature}; seed: {seed}; tools: {tools}; response_format: {response_format}"
+            f"Ollama LLM loaded: {model_name}; temperature: {temperature}; seed: {seed}; tools: {tools}; response_format: {response_format}; keep_alive: {keep_alive}"
         )
 
     async def generate(self, conversation: list[LLMMessage]) -> LLMMessage:
@@ -76,6 +74,8 @@ class OllamaLLM(LLM):
             format=self.response_format,
             tools=[tool.json_schema() for tool in self.tools] if self.tools else None,
             stream=False,
+            keep_alive=self.keep_alive,
+            options={"num_ctx": self.num_ctx, "temperature": self.temperature, "seed": self.seed},
         )
         logger.debug(f"Completion: {completion}")
         return LLMMessage(
@@ -103,6 +103,8 @@ class OllamaLLM(LLM):
             format=self.response_format,
             tools=[tool.json_schema() for tool in self.tools] if self.tools else None,
             stream=True,
+            keep_alive=self.keep_alive,
+            options={"num_ctx": self.num_ctx, "temperature": self.temperature, "seed": self.seed},
         )
 
         last_tool_call_sent = -1
@@ -131,4 +133,12 @@ class OllamaLLM(LLM):
                         last_tool_call_sent = index
 
         if last_chunk is not None:
-            MetadataProvider.add_metadata({"model": last_chunk.model})
+            eval_count = getattr(last_chunk, "eval_count", None) or 0
+            eval_duration_ns = getattr(last_chunk, "eval_duration", None) or 0
+            tps = round(eval_count / (eval_duration_ns / 1e9), 1) if eval_duration_ns else None
+            MetadataProvider.add_metadata({
+                "model": last_chunk.model,
+                "eval_count": eval_count,
+                "eval_duration_ns": eval_duration_ns,
+                "tokens_per_second": tps,
+            })

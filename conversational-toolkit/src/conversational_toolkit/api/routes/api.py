@@ -18,8 +18,12 @@ from conversational_toolkit.conversation_database.data_models.reaction import Re
 def create_api_router(
     controller: ConversationalToolkitController,
     auth_provider: AuthProvider,
+    conversation_metadata_provider=None,  # () -> dict  — injects kb_id/kb_name/rag_config_snapshot
 ) -> APIRouter:
     api_router = APIRouter(prefix="/api/v1")
+
+    def _get_extra_meta() -> dict:
+        return conversation_metadata_provider() if conversation_metadata_provider else {}
 
     @api_router.post("/messages")
     async def post_user_message(
@@ -32,7 +36,7 @@ def create_api_router(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail="User doesn't have access to this conversation"
                 )
-        return await controller.process_new_message(user_id=user_id, user_input=user_input)
+        return await controller.process_new_message(user_id=user_id, user_input=user_input, extra_meta=_get_extra_meta())
 
     @api_router.post("/messages/stream")
     async def post_user_message_stream(
@@ -46,7 +50,7 @@ def create_api_router(
                     status_code=status.HTTP_403_FORBIDDEN, detail="User doesn't have access to this conversation"
                 )
         return StreamingResponse(
-            controller.process_new_message_stream(user_id=user_id, user_input=user_input),  # type: ignore
+            controller.process_new_message_stream(user_id=user_id, user_input=user_input, extra_meta=_get_extra_meta()),  # type: ignore
             media_type="json/event-stream",
         )
 
@@ -69,6 +73,17 @@ def create_api_router(
         user_id: str = Depends(auth_provider.get_current_user_id),
     ) -> Conversation:
         return await controller.update_conversation(conversation_id, conversation_updates)
+
+    @api_router.delete("/conversations")
+    async def delete_all_conversations(
+        user_id: str = Depends(auth_provider.get_current_user_id),
+    ) -> int:
+        conversations = await controller.get_conversations_data_by_user_id(user_id)
+        count = 0
+        for conv in conversations:
+            await controller.delete_conversation(conv.id)
+            count += 1
+        return count
 
     @api_router.delete("/conversations/{conversation_id}")
     async def delete_conversation(

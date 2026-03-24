@@ -37,21 +37,27 @@ export const DisclaimerDialog: FunctionComponent = () => {
                     {t("informationDialog.languages")}
                     <br />
                     <br />
-                    {t("informationDialog.beta")}
-                    <br />
-                    <br />
-                    {t("informationDialog.logging")}
+                    {t("informationDialog.license")}
                 </DialogDescription>
 
                 <div className="text-xs opacity-50 text-center">
                     <Trans
                         i18nKey="credits"
-                        values={{ name: config.agent.name, sdsc: "SDSC" }}
+                        values={{ name: config.app.name }}
                         components={{
                             1: (
                                 <a
-                                    className={cn("cursor-pointer pl-[4px]", isDarkMode ? "text-green-600" : "text-green-600")}
-                                    href="https://www.datascience.ch/"
+                                    className={cn("cursor-pointer pl-[4px]", isDarkMode ? "text-blue-400" : "text-blue-600")}
+                                    href="https://www.vonlanthen.tv"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                />
+                            ),
+                            2: (
+                                <a
+                                    className={cn("cursor-pointer", isDarkMode ? "text-blue-400" : "text-blue-600")}
+                                    href="https://github.com/SwissDataScienceCenter"
+                                    target="_blank"
                                     rel="noreferrer"
                                 />
                             ),

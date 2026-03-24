@@ -29,9 +29,9 @@ export const ThemeProvider: FunctionComponent<Props> = (props: Props) => {
     const [theme, setTheme] = useState(() => {
         if (typeof window !== "undefined") {
             const savedTheme = window.localStorage.getItem("theme");
-            return savedTheme ? (savedTheme as Theme) : Theme.LIGHT;
+            return savedTheme ? (savedTheme as Theme) : Theme.SYSTEM;
         }
-        return Theme.LIGHT; // Default value when window is not available
+        return Theme.SYSTEM; // Default: follow system preference
     });
 
     const getCssClass = (theme: Theme) => {

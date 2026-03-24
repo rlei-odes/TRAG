@@ -13,8 +13,10 @@ const NewMessageInput = React.forwardRef<HTMLTextAreaElement, TextareaProps>(({ 
     const { isMobile } = useMediaQuery();
     const inputValue = String(value);
 
-    const handleKeyPress = (event: { key: string; shiftKey?: boolean; preventDefault: () => void }) => {
-        if (event.key === "Enter" && !event.shiftKey) {
+    const handleKeyPress = (event: { key: string; shiftKey?: boolean; ctrlKey?: boolean; preventDefault: () => void }) => {
+        const sendOnEnter = event.key === "Enter" && !event.shiftKey;
+        const sendOnCtrlEnter = event.key === "Enter" && event.ctrlKey;
+        if (sendOnEnter || sendOnCtrlEnter) {
             event.preventDefault();
             if (onPressEnter) {
                 onPressEnter(inputValue);

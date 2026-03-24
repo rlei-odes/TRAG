@@ -16,6 +16,10 @@ LLM backends (BACKEND must be set explicitly — there is no default):
     ollama — local Ollama server at http://localhost:11434
     openai — requires OPENAI_API_KEY (env var or /secrets/OPENAI_API_KEY file)
 
+Embedding backends (EMBEDDING_BACKEND, default: local):
+    local  — SentenceTransformer, no API key needed (default)
+    openai — requires OPENAI_API_KEY
+
 Data & vector store:
     PDFs are read from <project-root>/data/.
     The vector store is written to <project-root>/backend/data_vs.db.
@@ -44,34 +48,105 @@ from loguru import logger
 
 from conversational_toolkit.embeddings.base import EmbeddingsModel
 from conversational_toolkit.embeddings.openai import OpenAIEmbeddings
+from conversational_toolkit.embeddings.sentence_transformer import (
+    SentenceTransformerEmbeddings,
+)
+
 
 from conversational_toolkit.agents.base import QueryWithContext
 from conversational_toolkit.agents.rag import RAG
 from conversational_toolkit.chunking.base import Chunk
 from conversational_toolkit.chunking.excel_chunker import ExcelChunker
 from conversational_toolkit.chunking.markdown_chunker import MarkdownChunker
+from conversational_toolkit.chunking.markitdown_chunker import MarkItDownChunker
 from conversational_toolkit.chunking.pdf_chunker import PDFChunker
-from conversational_toolkit.embeddings.sentence_transformer import (
-    SentenceTransformerEmbeddings,
-)
 from conversational_toolkit.llms.base import LLM, LLMMessage
 from conversational_toolkit.llms.local_llm import LocalLLM
 from conversational_toolkit.llms.ollama import OllamaLLM
 from conversational_toolkit.llms.openai import OpenAILLM
 from conversational_toolkit.retriever.vectorstore_retriever import VectorStoreRetriever
-from conversational_toolkit.vectorstores.base import ChunkMatch
+from conversational_toolkit.vectorstores.base import ChunkMatch, VectorStore
 from conversational_toolkit.vectorstores.chromadb import ChromaDBVectorStore
+
+
+# Embedding dimension lookup — used when creating a pgvector table.
+# All values are the default output dimensions for each model.
+EMBEDDING_DIMS: dict[str, int] = {
+    "nomic-ai/nomic-embed-text-v1": 768,
+    "nomic-embed-text": 768,
+    "all-MiniLM-L6-v2": 384,
+    "all-minilm": 384,
+    "BAAI/bge-m3": 1024,
+    "intfloat/multilingual-e5-large": 1024,
+    "mxbai-embed-large": 1024,
+    "text-embedding-3-small": 1536,
+    "text-embedding-ada-002": 1536,
+    "text-embedding-3-large": 3072,
+    "voyage/voyage-3": 1024,
+}
+_DEFAULT_EMBEDDING_DIM = 768
+
+
+def make_vector_store(
+    vs_type: str,
+    db_path: Path | None,
+    embedding_model_name: str,
+    vs_connection_string: str = "",
+    table_name: str = "rag_chunks",
+) -> VectorStore:
+    """Factory: create a ChromaDB or PGVector store from KB config."""
+    vs_type = (vs_type or "chromadb").lower()
+    if vs_type == "pgvector":
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from conversational_toolkit.vectorstores.postgres import PGVectorStore
+        conn = vs_connection_string.strip()
+        if not conn:
+            raise ValueError("vs_connection_string is required for pgvector")
+        # Convert postgresql:// to postgresql+asyncpg://
+        if conn.startswith("postgresql://"):
+            conn = conn.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif conn.startswith("postgres://"):
+            conn = conn.replace("postgres://", "postgresql+asyncpg://", 1)
+        engine = create_async_engine(conn, pool_pre_ping=True)
+        dim = EMBEDDING_DIMS.get(embedding_model_name, _DEFAULT_EMBEDDING_DIM)
+        logger.info(f"PGVectorStore: table={table_name!r} dim={dim} conn={conn[:40]}...")
+        return PGVectorStore(engine=engine, table_name=table_name, embeddings_size=dim)
+    else:
+        if db_path is None:
+            raise ValueError("db_path is required for chromadb")
+        return ChromaDBVectorStore(db_path=str(db_path))
+
+
+class NomicVectorStoreRetriever(VectorStoreRetriever):
+    """VectorStoreRetriever that prepends 'search_query: ' for nomic-embed-text.
+
+    nomic-embed-text-v1 is trained with task prefixes:
+      - 'search_document: ...' at index time  (applied in build_vector_store)
+      - 'search_query: ...'    at query time   (applied here)
+    Skipping the prefix noticeably degrades retrieval quality.
+    """
+
+    async def retrieve(self, query: str) -> list[ChunkMatch]:
+        return await super().retrieve(f"search_query: {query}")
 
 # Paths and defaults
 _ROOT = Path(__file__).parents[3]  # <project-root>/
 DATA_DIR = _ROOT / "data"
 VS_PATH = _ROOT / "backend" / "data_vs.db"
 
-EMBEDDING_MODEL = "text-embedding-3-small"
+# Local embedding model — runs fully offline via sentence-transformers.
+# nomic-embed-text produces 768-dim embeddings and handles long documents well.
+# Switch to "all-MiniLM-L6-v2" for a lighter/faster alternative (384-dim).
+LOCAL_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v1"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+
+# Active embedding model name — resolved in build_embedding_model()
+EMBEDDING_MODEL = LOCAL_EMBEDDING_MODEL
+
 RETRIEVER_TOP_K = 5
 SEED = 42
-MAX_FILES = 5
-MAX_FILE_SIZE_MB = 20  # files larger than this are flagged and skipped
+MAX_FILES = None  # None = all files; set to int for dev/debug
+MAX_FILE_SIZE_MB = 20
 
 SYSTEM_PROMPT = (
     "You are a helpful AI assistant specialised in sustainability and product compliance for PrimePack AG.\n\n"
@@ -86,25 +161,20 @@ SYSTEM_PROMPT = (
     "- Distinguish between third-party verified claims (EPDs) and self-declared supplier claims."
 )
 
-_CHUNKERS: dict[str, PDFChunker | ExcelChunker | MarkdownChunker] = {
+_CHUNKERS: dict[str, PDFChunker | ExcelChunker | MarkdownChunker | MarkItDownChunker] = {
     ".pdf": PDFChunker(),
     ".xlsx": ExcelChunker(),
     ".xls": ExcelChunker(),
     ".md": MarkdownChunker(),
     ".txt": MarkdownChunker(),
+    ".docx": MarkItDownChunker(),
+    ".doc": MarkItDownChunker(),
+    ".epub": MarkItDownChunker(),
 }
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".tiff", ".bmp", ".webp"}
 
 
 def _get_secret(name: str) -> str:
-    """Load a secret from a Renku secret file or an environment variable.
-
-    Checks in order:
-    1. /secrets/<name> — Renku secret file
-    2. <name> environment variable
-
-    Raises ValueError if neither is available.
-    """
     secret_file = Path(f"/secrets/{name}")
     if secret_file.exists():
         return secret_file.read_text().strip()
@@ -112,10 +182,61 @@ def _get_secret(name: str) -> str:
     if not key:
         raise ValueError(
             f"{name} not found. Either:\n"
-            f"  - Add it as a Renku secret at /secrets/{name} (see Renku_README.md), or\n"
+            f"  - Add it as a Renku secret at /secrets/{name}, or\n"
             f"  - Set the {name} environment variable."
         )
     return key
+
+
+def build_embedding_model(
+    embedding_backend: str | None = None,
+    model_name: str | None = None,
+    ollama_host: str = "",
+    custom_base_url: str = "",
+    custom_api_key: str = "",
+) -> EmbeddingsModel:
+    """Instantiate the embedding model for the requested backend.
+
+    local   → SentenceTransformer (fully offline, no API key needed).
+    ollama  → Ollama embedding server via OpenAI-compat /v1/embeddings.
+    litellm → OpenAI-compatible API at LITELLM_BASE_URL (requires LITELLM_API_KEY).
+    custom  → direct OpenAI-compatible API with explicit base URL + API key.
+    """
+    backend = (
+        embedding_backend
+        or os.getenv("EMBEDDING_BACKEND", "local")
+    ).lower().strip()
+    # backward-compat: 'openai' was renamed to 'custom'
+    if backend == "openai":
+        backend = "custom"
+
+    if backend == "ollama":
+        host = (ollama_host or os.getenv("OLLAMA_HOST", "localhost:11434")).strip()
+        if not host.startswith("http"):
+            host = f"http://{host}"
+        base_url = f"{host}/v1"
+        name = model_name or "nomic-embed-text"
+        logger.info(f"Embedding backend: Ollama ({name}) @ {base_url}")
+        return OpenAIEmbeddings(model_name=name, base_url=base_url, api_key="ollama", dimensions=None)
+    elif backend == "litellm":
+        name = model_name or "voyage/voyage-3"
+        base_url = os.getenv("LITELLM_BASE_URL", "")
+        api_key = os.getenv("LITELLM_API_KEY", "")
+        logger.info(f"Embedding backend: LiteLLM ({name}) @ {base_url or 'default'}")
+        return OpenAIEmbeddings(model_name=name, base_url=base_url or None, api_key=api_key or None, dimensions=None)
+    elif backend == "custom":
+        name = model_name or OPENAI_EMBEDDING_MODEL
+        url = custom_base_url.strip() or None
+        key = custom_api_key.strip() or os.getenv("OPENAI_API_KEY", "") or None
+        logger.info(f"Embedding backend: custom ({name}) @ {url or 'OpenAI default'}")
+        return OpenAIEmbeddings(model_name=name, base_url=url, api_key=key, dimensions=None)
+    else:  # local
+        name = model_name or LOCAL_EMBEDDING_MODEL
+        logger.info(f"Embedding backend: local SentenceTransformer ({name})")
+        return SentenceTransformerEmbeddings(
+            model_name=name,
+            trust_remote_code="nomic" in name.lower(),
+        )
 
 
 def build_llm(
@@ -123,42 +244,18 @@ def build_llm(
     model_name: str | None = None,
     temperature: float = 0.3,
     response_format=None,
+    ollama_host: str | None = None,
+    num_ctx: int = 8192,
+    custom_base_url: str = "",
+    custom_api_key: str = "",
 ) -> LLM:
-    """Instantiate the LLM for the requested backend.
-
-    Args:
-        backend: LLM backend — must be one of 'ollama', 'openai', or 'qwen'. No default.
-        model_name: Model to use. Falls back to the per-backend default when None.
-        temperature: Sampling temperature.
-        response_format: Optional parameter to specify the desired response format (e.g., "json"). Supported by some backends.
-
-    For 'openai', the key is loaded from /secrets/OPENAI_API_KEY or the OPENAI_API_KEY env var.
-    """
+    """Instantiate the LLM for the requested backend."""
     backend = backend.lower().strip()
     match backend:
-        case "openai":
-            name = model_name or "gpt-4o-mini"
-            logger.info(f"LLM backend: OpenAI ({name})")
-            return OpenAILLM(
-                model_name=name,
-                temperature=temperature,
-                seed=SEED,
-                openai_api_key=_get_secret("OPENAI_API_KEY"),
-                response_format=response_format,
-            )
-        case "qwen":
-            name = model_name or "Qwen/Qwen3-32B-AWQ"
-            logger.info(f"LLM backend: SDSC Qwen ({name})")
-            return LocalLLM(
-                model_name=name,
-                base_url="https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1",
-                api_key=_get_secret("SDSC_QWEN3_32B_AWQ"),
-                temperature=temperature,
-                seed=SEED,
-            )
         case "ollama":
             name = model_name or "mistral-nemo:12b"
-            logger.info(f"LLM backend: Ollama ({name})")
+            host = ollama_host or os.getenv("OLLAMA_HOST") or None
+            logger.info(f"LLM backend: Ollama ({name}) host={host or 'localhost'} num_ctx={num_ctx}")
             return OllamaLLM(
                 model_name=name,
                 temperature=temperature,
@@ -166,31 +263,153 @@ def build_llm(
                 tools=None,
                 tool_choice=None,
                 response_format=response_format,
-                host=None,  # default http://localhost:11434
+                host=host,
+                num_ctx=num_ctx,
+            )
+        case "litellm":
+            base_url = os.getenv("LITELLM_BASE_URL", "")
+            api_key = os.getenv("LITELLM_API_KEY", "")
+            if not base_url:
+                raise ValueError("LITELLM_BASE_URL environment variable is not set")
+            name = model_name or "claude-haiku-4-5"
+            if base_url and not base_url.rstrip("/").endswith("/v1"):
+                base_url = base_url.rstrip("/") + "/v1"
+            logger.info(f"LLM backend: LiteLLM ({name}) @ {base_url or 'default'}")
+            return LocalLLM(
+                model_name=name,
+                base_url=base_url or "",
+                api_key=api_key or "",
+                temperature=temperature,
+                seed=SEED,
+                response_format=response_format,
+            )
+        case "custom":
+            # OpenAI-compatible custom endpoint (Anthropic, OpenAI, local vLLM, etc.)
+            name = model_name or ""
+            url = custom_base_url.strip()
+            key = custom_api_key.strip()
+            logger.info(f"LLM backend: Custom ({name}) @ {url or '(no url)'}")
+            return OpenAILLM(
+                model_name=name,
+                temperature=temperature,
+                seed=SEED,
+                openai_api_key=key or None,
+                base_url=url or None,
+                response_format=response_format,
+            )
+        case "openai" | "anthropic" | "qwen":
+            # Legacy / internal: route through custom with env-based credentials
+            if backend == "openai":
+                name = model_name or "gpt-4o-mini"
+                key = _get_secret("OPENAI_API_KEY") or ""
+                url = None
+            elif backend == "anthropic":
+                name = model_name or "claude-haiku-4-5-20251001"
+                key = _get_secret("ANTHROPIC_API_KEY") or ""
+                url = "https://api.anthropic.com/v1"
+            else:  # qwen
+                name = model_name or "Qwen/Qwen3-32B-AWQ"
+                key = _get_secret("SDSC_QWEN3_32B_AWQ") or ""
+                url = "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
+            logger.info(f"LLM backend: {backend} ({name})")
+            return OpenAILLM(
+                model_name=name, temperature=temperature, seed=SEED,
+                openai_api_key=key or None, base_url=url, response_format=response_format,
             )
         case _:
             raise ValueError(
-                f"Unsupported backend {backend!r}. Choose 'openai', 'ollama', or 'qwen'."
+                f"Unsupported backend {backend!r}. Choose 'ollama', 'litellm', or 'custom'."
             )
 
 
-def load_chunks(max_files: int | None = None) -> list[Chunk]:
-    """Load documents from DATA_DIR and split them into chunks.
+def _split_chunk_by_tokens(chunk: Chunk, max_tokens: int) -> list[Chunk]:
+    """Split a chunk whose content exceeds max_tokens into smaller sub-chunks.
 
-    Supported formats:
-        .pdf: converted to Markdown, split on headings
-        .xlsx, .xls: one chunk per sheet (Markdown table)
-
-    Unsupported formats (e.g. standalone images) are logged as warnings and skipped. Images embedded inside PDFs are not extracted as text by default!
-
-    Pass 'max_files' to cap the total number of files processed. Useful for quick iteration during development before scaling to all files.
+    Uses a simple character-based token estimate (4 chars ≈ 1 token).
+    Splits at paragraph boundaries where possible, otherwise at word boundaries.
     """
+    max_chars = max_tokens * 4
+    text = chunk.content
+    if len(text) <= max_chars:
+        return [chunk]
+
+    sub_chunks: list[Chunk] = []
+    paragraphs = text.split("\n\n")
+    current: list[str] = []
+    current_len = 0
+
+    def _flush() -> None:
+        if current:
+            sub_text = "\n\n".join(current).strip()
+            if sub_text:
+                sub_chunks.append(Chunk(
+                    title=chunk.title,
+                    content=sub_text,
+                    mime_type=chunk.mime_type,
+                    metadata=chunk.metadata.copy(),
+                ))
+
+    for para in paragraphs:
+        if current_len + len(para) + 2 > max_chars and current:
+            _flush()
+            current = []
+            current_len = 0
+        # Paragraph itself is too long — split at word boundaries
+        if len(para) > max_chars:
+            words = para.split()
+            word_buf: list[str] = []
+            word_len = 0
+            for word in words:
+                if word_len + len(word) + 1 > max_chars and word_buf:
+                    sub_chunks.append(Chunk(
+                        title=chunk.title,
+                        content=" ".join(word_buf),
+                        mime_type=chunk.mime_type,
+                        metadata=chunk.metadata.copy(),
+                    ))
+                    word_buf = []
+                    word_len = 0
+                word_buf.append(word)
+                word_len += len(word) + 1
+            if word_buf:
+                para_text = " ".join(word_buf)
+                current.append(para_text)
+                current_len += len(para_text) + 2
+        else:
+            current.append(para)
+            current_len += len(para) + 2
+
+    _flush()
+    return sub_chunks if sub_chunks else [chunk]
+
+
+def load_chunks(
+    data_dirs: list[Path] | None = None,
+    max_files: int | None = None,
+    max_file_size_mb: float = MAX_FILE_SIZE_MB,
+    on_progress=None,  # callable(current_file, file_index, total_files, chunks_so_far)
+    pdf_ocr_enabled: bool = True,
+    max_chunk_tokens: int = 0,
+) -> list[Chunk]:
+    """Load documents from one or more directories and split them into chunks.
+
+    Args:
+        data_dirs: List of directories to ingest. Defaults to [DATA_DIR].
+        max_files:  Cap total files (useful for dev/debug).
+        max_file_size_mb: Skip files larger than this limit.
+    """
+    dirs = data_dirs if data_dirs else [DATA_DIR]
     all_chunks: list[Chunk] = []
-    all_files = sorted(f for f in DATA_DIR.iterdir() if f.is_file())
+
+    all_files: list[Path] = []
+    for d in dirs:
+        if not d.exists():
+            logger.warning(f"Data directory not found, skipping: {d}")
+            continue
+        all_files.extend(sorted(f for f in d.iterdir() if f.is_file()))
 
     if max_files is not None:
         all_files = all_files[:max_files]
-        print(len(all_files))
 
     for f in all_files:
         ext = f.suffix.lower()
@@ -205,26 +424,38 @@ def load_chunks(max_files: int | None = None) -> list[Chunk]:
         for f in all_files
         if f.suffix.lower() in _CHUNKERS and "EVALUATION" not in f.name
     ]
-    logger.info(f"Chunking {len(supported_files)} files from {DATA_DIR}")
+    logger.info(f"Chunking {len(supported_files)} files from {[str(d) for d in dirs]}")
 
     for file_path in supported_files:
         size_mb = file_path.stat().st_size / (1024 * 1024)
-        if size_mb > MAX_FILE_SIZE_MB:
+        if size_mb > max_file_size_mb:
             logger.warning(
                 f"Skipping {file_path.name}: file too large "
-                f"({size_mb:.1f} MB > {MAX_FILE_SIZE_MB} MB limit)"
+                f"({size_mb:.1f} MB > {max_file_size_mb} MB limit)"
             )
             continue
         chunker = _CHUNKERS[file_path.suffix.lower()]
         try:
-            file_chunks = chunker.make_chunks(str(file_path))
+            file_idx = supported_files.index(file_path)
+            if on_progress:
+                on_progress(file_path.name, file_idx, len(supported_files), len(all_chunks))
+            kwargs = {}
+            if hasattr(chunker, "make_chunks") and file_path.suffix.lower() == ".pdf":
+                kwargs["do_ocr"] = pdf_ocr_enabled
+            file_chunks = chunker.make_chunks(str(file_path), **kwargs)
+            if max_chunk_tokens > 0:
+                split: list[Chunk] = []
+                for c in file_chunks:
+                    split.extend(_split_chunk_by_tokens(c, max_chunk_tokens))
+                file_chunks = split
             for chunk in file_chunks:
                 chunk.metadata["source_file"] = file_path.name
-                # Also store as "source" and "title" so the frontend can display them
                 chunk.metadata["source"] = file_path.name
                 chunk.metadata["title"] = chunk.title
             all_chunks.extend(file_chunks)
             logger.debug(f"  {file_path.name}: {len(file_chunks)} chunks")
+            if on_progress:
+                on_progress(file_path.name, file_idx + 1, len(supported_files), len(all_chunks))
         except Exception as exc:
             logger.warning(f"Skipping {file_path.name}: {exc}")
 
@@ -233,10 +464,6 @@ def load_chunks(max_files: int | None = None) -> list[Chunk]:
 
 
 def inspect_chunks(chunks: list[Chunk], sample_size: int = 5) -> None:
-    """Print a statistical summary and sampled content for visual inspection.
-
-    Call this after 'load_chunks' to verify that PDFs parsed correctly and that the chunk granularity looks reasonable before spending time on embedding.
-    """
     counts = Counter(c.metadata.get("source_file", "unknown") for c in chunks)
     logger.info("------ Chunk inspection -------")
     logger.info(f"Total chunks: {len(chunks)}; Source files: {len(counts)}")
@@ -254,42 +481,61 @@ async def build_vector_store(
     embedding_model: EmbeddingsModel,
     db_path: Path = VS_PATH,
     reset: bool = False,
-    batch_size: int = 10,
-) -> ChromaDBVectorStore:
-    """Embed 'chunks' and persist them in a ChromaDB vector store."""
-    vector_store = ChromaDBVectorStore(db_path=str(db_path))
+    batch_size: int = 50,
+    on_embed_progress=None,  # callable(batch_index, total_batches)
+    vector_store: VectorStore | None = None,  # if provided, use instead of creating ChromaDB
+) -> VectorStore:
+    """Embed chunks and persist them in a vector store (ChromaDB or PGVector)."""
+    if vector_store is None:
+        vector_store = ChromaDBVectorStore(db_path=str(db_path))
 
     if reset:
-        vector_store.client.delete_collection(vector_store.collection.name)
-        vector_store.collection = vector_store.client.create_collection(
-            name="default_collection"
-        )
-        logger.info(f"Reset vector store collection at {db_path}")
+        if isinstance(vector_store, ChromaDBVectorStore):
+            vector_store.client.delete_collection(vector_store.collection.name)
+            vector_store.collection = vector_store.client.create_collection(
+                name="default_collection"
+            )
+            logger.info(f"Reset ChromaDB collection at {db_path}")
+        else:
+            await vector_store.clear()
+            logger.info("Reset vector store (cleared all rows)")
 
-    if not reset and vector_store.collection.count() > 0:
+    current_count = await vector_store.count()
+    if not reset and current_count > 0:
         logger.info(
-            f"Vector store already contains {vector_store.collection.count()} chunks — skipping embedding."
+            f"Vector store already contains {current_count} chunks — skipping embedding."
         )
         return vector_store
 
-    logger.info(f"Embedding {len(chunks)} chunks with {embedding_model!r} ...")
+    if not chunks:
+        logger.warning("No chunks to embed — vector store will be empty.")
+        return vector_store
 
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i : i + batch_size]
+    logger.info(f"Embedding {len(chunks)} chunks ...")
 
-        # Text embeddings need content strings; multimodal embeddings need Chunk objects
-        if all(c.mime_type.startswith("text") for c in batch):
-            embeddings = await embedding_model.get_embeddings(
-                [c.content for c in batch]
-            )
+    # nomic-embed-text requires task-specific prefixes for best retrieval quality:
+    #   "search_document: <text>"  when indexing corpus chunks
+    #   "search_query: <text>"     when embedding a query at retrieval time
+    # Other models ignore these prefixes harmlessly.
+    use_nomic_prefix = "nomic" in getattr(embedding_model, "model_name", "").lower()
+
+    text_chunks = [c for c in chunks if c.mime_type.startswith("text")]
+    for i in range(0, len(text_chunks), batch_size):
+        batch = text_chunks[i : i + batch_size]
+
+        if use_nomic_prefix:
+            texts = [f"search_document: {c.content}" for c in batch]
         else:
-            embeddings = await embedding_model.get_embeddings(batch)
+            texts = [c.content for c in batch]
+
+        embeddings = await embedding_model.get_embeddings(texts)
 
         await vector_store.insert_chunks(chunks=batch, embedding=embeddings)
-
-        logger.info(
-            f"Processed batch {i // batch_size + 1}/{(len(chunks) - 1) // batch_size + 1}"
-        )
+        batch_idx = i // batch_size + 1
+        total_batches = (len(text_chunks) - 1) // batch_size + 1
+        logger.info(f"Processed batch {batch_idx}/{total_batches}")
+        if on_embed_progress:
+            on_embed_progress(batch_idx, total_batches)
 
     logger.info(f"Done! Vector store written to {db_path}")
     return vector_store
@@ -297,23 +543,15 @@ async def build_vector_store(
 
 async def inspect_retrieval(
     query: str,
-    vector_store: ChromaDBVectorStore,
-    embedding_model: SentenceTransformerEmbeddings | OpenAIEmbeddings,
+    vector_store: VectorStore,
+    embedding_model: EmbeddingsModel,
     top_k: int = RETRIEVER_TOP_K,
 ) -> list[ChunkMatch]:
-    """Run semantic retrieval and print the results before the LLM sees anything.
-
-    This is the most important diagnostic step: if the chunks returned here are wrong, the final answer will be wrong regardless of the model. Run this step in isolation to tune 'RETRIEVER_TOP_K', experiment with query phrasing, or compare different embedding models.
-
-    # To add lexical (BM25) or hybrid (semantic + lexical) retrieval, replace 'VectorStoreRetriever' with 'HybridRetriever([semantic, bm25], top_k=top_k)' 'BM25Retriever' requires a 'list[ChunkRecord]' corpus -> pass the records retrieved from ChromaDB or, after a full store insert, re-fetch them with 'vector_store.get_chunks_by_embedding(zero_vector, top_k=N)'.
-    """
-    retriever = VectorStoreRetriever(embedding_model, vector_store, top_k=top_k)
+    retriever = _make_retriever(embedding_model, vector_store, top_k)
     results = await retriever.retrieve(query)
 
     logger.info(f"Retrieval for query: {query!r}")
-    print(
-        f"\nTop-{top_k} retrieved chunks (returned={len(results)}; showing a maximum of 1000 content characters):"
-    )
+    print(f"\nTop-{top_k} retrieved chunks (returned={len(results)}):")
     for i, r in enumerate(results, 1):
         src = r.metadata.get("source_file", "?")
         print(f"  [{i}] score={r.score:.4f}  file={src!r}  title={r.title!r}")
@@ -322,20 +560,27 @@ async def inspect_retrieval(
     return results
 
 
+def _make_retriever(
+    embedding_model: EmbeddingsModel,
+    vector_store: VectorStore,
+    top_k: int,
+) -> VectorStoreRetriever:
+    """Return a retriever with the correct query prefix for the embedding model."""
+    if "nomic" in getattr(embedding_model, "model_name", "").lower():
+        return NomicVectorStoreRetriever(embedding_model, vector_store, top_k=top_k)
+    return VectorStoreRetriever(embedding_model, vector_store, top_k=top_k)
+
+
 def build_agent(
-    vector_store: ChromaDBVectorStore,
-    embedding_model: SentenceTransformerEmbeddings | OpenAIEmbeddings,
+    vector_store: VectorStore,
+    embedding_model: EmbeddingsModel,
     llm: LLM,
     top_k: int,
     system_prompt: str,
     number_query_expansion: int = 0,
     enable_hyde: bool = False,
 ) -> RAG:
-    """Assemble the RAG agent from a pre-built vector store and LLM.
-
-    'number_query_expansion' > 0 expands the user query into N related English sub-queries, retrieves for each separately, and merges results with RRF before generation. Useful for broad or ambiguous questions but adds one LLM call per expansion.
-    """
-    retriever = VectorStoreRetriever(embedding_model, vector_store, top_k=top_k)
+    retriever = _make_retriever(embedding_model, vector_store, top_k)
     agent = RAG(
         llm=llm,
         utility_llm=llm,
@@ -344,9 +589,7 @@ def build_agent(
         number_query_expansion=number_query_expansion,
         enable_hyde=enable_hyde,
     )
-    logger.info(
-        f"RAG agent ready (top_k={top_k}  query_expansion={number_query_expansion})"
-    )
+    logger.info(f"RAG agent ready (top_k={top_k}  query_expansion={number_query_expansion})")
     return agent
 
 
@@ -355,10 +598,6 @@ async def ask(
     query: str,
     history: list[LLMMessage] | None = None,
 ) -> str:
-    """Send 'query' to the RAG agent and log the answer plus cited sources.
-
-    Returns the answer string so callers can store or post-process it. Pass 'history' to simulate a multi-turn conversation: the agent will rewrite the query to be self-contained before retrieval.
-    """
     logger.info(f"Query: {query!r}")
     response = await agent.answer(QueryWithContext(query=query, history=history or []))
 
@@ -366,7 +605,7 @@ async def ask(
     print(f"{response.content}")
     print(f"Sources ({len(response.sources)}):")
     for src in response.sources:
-        source_file = src.metadata.get("source_file", "?")  # type: ignore[union-attr]
+        source_file = src.metadata.get("source_file", "?")
         print(f"  {source_file!r}  |  {src.title!r}")
 
     return response.content
@@ -377,40 +616,18 @@ async def run_pipeline(
     model_name: str | None = None,
     query: str = "What sustainability certifications do the pallets have?",
     reset_vs: bool = False,
+    embedding_backend: str | None = None,
 ) -> str:
-    """Run the full five-step pipeline and return the final answer.
-
-    Args:
-        backend:    LLM backend — must be one of 'ollama', 'openai', or 'qwen'. No default.
-        model_name: Model override, see build_llm() for per-backend defaults
-        query:      The question to ask
-        reset_vs:   Rebuild the vector store from scratch even if one exists
-
-    Returns:
-        The final answer string from the RAG agent.
-    """
     logger.info("Starting Baseline RAG pipeline")
-    logger.info(
-        f"backend={backend!r}  model={model_name!r}  max_files={MAX_FILES}  reset_vs={reset_vs}  top_k={RETRIEVER_TOP_K}"
-    )
 
-    # Step 1: Chunking
     chunks = load_chunks(max_files=MAX_FILES)
     inspect_chunks(chunks)
 
-    # Step 2: Embedding + vector store
-    embedding_model: SentenceTransformerEmbeddings | OpenAIEmbeddings
-    if "sentence-transformers" in EMBEDDING_MODEL:
-        embedding_model = SentenceTransformerEmbeddings(model_name=EMBEDDING_MODEL)
-    else:
-        embedding_model = OpenAIEmbeddings(model_name=EMBEDDING_MODEL)
-
+    embedding_model = build_embedding_model(embedding_backend)
     vector_store = await build_vector_store(chunks, embedding_model, reset=reset_vs)
 
-    # Step 3: Inspect retrieval before the LLM is involved
     await inspect_retrieval(query, vector_store, embedding_model)
 
-    # Step 4: Build agent
     llm = build_llm(backend, model_name=model_name)
     agent = build_agent(
         vector_store,
@@ -420,9 +637,7 @@ async def run_pipeline(
         system_prompt=SYSTEM_PROMPT,
     )
 
-    # Step 5: Generate answer
     answer = await ask(agent, query)
-
     logger.info("Baseline RAG pipeline done")
     return answer
 
@@ -441,5 +656,6 @@ if __name__ == "__main__":
             model_name=os.getenv("MODEL") or None,
             query=os.getenv("QUERY", "What materials is the Lara pallet made out of?"),
             reset_vs=os.getenv("RESET_VS", "0") == "1",
+            embedding_backend=os.getenv("EMBEDDING_BACKEND", "local"),
         )
     )

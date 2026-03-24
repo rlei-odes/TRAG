@@ -4,78 +4,79 @@
 
 @layer base {
     :root {
-        /* Based on Green/Brown branding */
-        --background: 0, 0%, 97%;
-        --foreground: 120, 15%, 15%;
+        /* Vonlanthen INSIGHT — Light Mode */
+        --background: 210, 20%, 98%;
+        --foreground: 216, 15%, 20%;
 
         --card: 0, 0%, 100%;
-        --card-foreground: 120, 15%, 15%;
+        --card-foreground: 216, 15%, 20%;
 
         --popover: 0, 0%, 100%;
-        --popover-foreground: 120, 15%, 15%;
+        --popover-foreground: 216, 15%, 20%;
 
-        --code: 120, 15%, 15%;
-        --code-background: 0, 0%, 92%;
+        --code: 216, 15%, 20%;
+        --code-background: 210, 20%, 93%;
 
-        /* Primary: Dark Green */
-        --primary: 150, 45%, 25%;
+        /* Primary: Vonlanthen Blue */
+        --primary: 206, 100%, 40%;
         --primary-foreground: 0, 0%, 100%;
 
-        /* Secondary: Earthy Brown/Tan */
-        --secondary: 35, 30%, 55%;
+        /* Secondary: lighter blue */
+        --secondary: 214, 83%, 56%;
         --secondary-foreground: 0, 0%, 100%;
 
-        --muted: 0, 0%, 91%;
-        --muted-foreground: 120, 5%, 40%;
+        --muted: 210, 15%, 91%;
+        --muted-foreground: 220, 10%, 45%;
 
-        --accent: 150, 30%, 80%;
+        --accent: 214, 83%, 56%;
         --accent-foreground: 0, 0%, 100%;
 
         --destructive: 0, 72%, 34%;
         --destructive-foreground: 0, 0%, 100%;
 
-        --border: 0, 0%, 85%;
+        --border: 210, 15%, 85%;
         --input: 0, 0%, 100%;
-        --ring: 150, 45%, 25%;
-        --ripple: 150, 45%, 25%;
+        --ring: 206, 100%, 40%;
+        --ripple: 206, 100%, 40%;
 
         --radius: 0.5rem;
     }
 
     .dark {
-        --background: 120, 15%, 10%;
-        --foreground: 0, 0%, 95%;
+        /* Vonlanthen INSIGHT — Dark Mode */
+        --background: 0, 0%, 7%;
+        --foreground: 0, 0%, 94%;
 
-        --card: 120, 15%, 15%;
-        --card-foreground: 0, 0%, 95%;
+        --card: 0, 0%, 11%;
+        --card-foreground: 0, 0%, 94%;
 
-        --popover: 120, 15%, 15%;
-        --popover-foreground: 0, 0%, 95%;
+        --popover: 0, 0%, 11%;
+        --popover-foreground: 0, 0%, 94%;
 
-        --code: 0, 0%, 95%;
-        --code-background: 120, 15%, 10%;
+        --code: 0, 0%, 94%;
+        --code-background: 0, 0%, 7%;
 
-        /* Primary: Lighter Green for Dark Mode */
-        --primary: 150, 45%, 40%;
+        /* Primary: Vonlanthen Blue (lighter for dark bg) */
+        --primary: 214, 83%, 56%;
         --primary-foreground: 0, 0%, 100%;
 
-        /* Secondary: Brighter Tan for Dark Mode */
-        --secondary: 35, 40%, 65%;
+        /* Secondary: soft blue accent */
+        --secondary: 214, 100%, 70%;
         --secondary-foreground: 0, 0%, 10%;
 
-        --muted: 120, 15%, 20%;
-        --muted-foreground: 0, 0%, 70%;
+        --muted: 0, 0%, 14%;
+        --muted-foreground: 220, 10%, 60%;
 
-        --accent: 150, 45%, 40%;
+        --accent: 214, 83%, 56%;
         --accent-foreground: 0, 0%, 100%;
 
         --destructive: 0, 72%, 45%;
         --destructive-foreground: 0, 0%, 100%;
 
-        --border: 120, 15%, 25%;
-        --input: 120, 15%, 15%;
-        --ring: 150, 45%, 40%;
-        --ripple: 150, 45%, 40%;
+        --border: 0, 0%, 18%;
+        --input: 0, 0%, 11%;
+        --ring: 214, 83%, 56%;
+        --ripple: 214, 83%, 56%;
     }
 }
 

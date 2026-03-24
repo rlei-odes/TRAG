@@ -20,6 +20,11 @@ class Conversation(BaseModel):
     create_timestamp: int
     update_timestamp: int
     title: str
+    # Evaluation metadata — which KB and RAG config was active when this chat was created
+    kb_id: str | None = None
+    kb_name: str | None = None
+    rag_config_snapshot: dict | None = None
+    session_label: str | None = None
 
 
 class ConversationDatabase(ABC):

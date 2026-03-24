@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { messageService as mockMessageService } from "@/services/mock-message";
 import { Message, messageService as realMessageService, MessageTypes, Reaction } from "@/services/message";
 import { useTranslation } from "react-i18next";
@@ -39,12 +39,16 @@ const MessagingContext = createContext<{
     cursor: Message["id"];
     sending: boolean;
     loading: boolean;
+    sessionLabel: string;
+    setSessionLabel: (label: string) => void;
     createNewConversation: () => void;
     changeConversation: (conversationId: string) => void;
     changeThread: (messageId: string) => void;
     sendMessage: (input: string, type: MessageTypes, parentId?: string) => void;
+    stopSending: () => void;
     renameConversation: (conversationId: Conversation["id"], conversationName: string) => void;
     deleteConversation: (conversationId: Conversation["id"]) => void;
+    deleteAllConversations: () => void;
     reactToMessage: (messageId: Message["id"], reaction: Reaction["content"]) => void;
 }>({
     thread: [],
@@ -54,12 +58,16 @@ const MessagingContext = createContext<{
     cursor: "",
     sending: false,
     loading: false,
+    sessionLabel: "",
+    setSessionLabel: () => {},
     createNewConversation: () => {},
     changeConversation: () => {},
     changeThread: () => {},
     sendMessage: () => {},
+    stopSending: () => {},
     renameConversation: () => {},
     deleteConversation: () => {},
+    deleteAllConversations: () => {},
     reactToMessage: () => {},
 });
 
@@ -78,6 +86,8 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [cursor, setCursor] = useState<Message["id"]>("");
     const [thread, setThread] = useState<Message[]>([]);
+    const [sessionLabel, setSessionLabel] = useState<string>("");
+    const abortControllerRef = useRef<AbortController | null>(null);
     const { t } = useTranslation("app");
 
     const setConversationId = (conversationId: Conversation["id"]) => {
@@ -90,16 +100,22 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
     };
 
     useEffect(() => {
-        if (activeConversationId) {
-            _changeConversation(activeConversationId).then(() => setInitialLoading(false));
-        } else {
-            setInitialLoading(false);
-        }
-        conversationService.getAll().then((response) => {
-            if (response) {
-                setConversations(response);
-            }
-        });
+        // Always call /auth/refresh on startup so the backend can migrate old cookies
+        // to the current stable user_id (deterministic hash of API_KEY).
+        fetch(`${process.env.SERVER_URL}/auth/refresh`, { method: "POST", credentials: "include" })
+            .catch(() => {})
+            .finally(() => {
+                if (activeConversationId) {
+                    _changeConversation(activeConversationId).then(() => setInitialLoading(false));
+                } else {
+                    setInitialLoading(false);
+                }
+                conversationService.getAll().then((response) => {
+                    if (response) {
+                        setConversations(response);
+                    }
+                });
+            });
     }, []);
 
     const createNewConversation = () => {
@@ -157,6 +173,7 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
             type,
             ...(activeConversationId ? { conversation_id: activeConversationId } : {}),
             ...(parentId ? { parent_id: parentId } : {}),
+            ...(!activeConversationId && sessionLabel ? { session_label: sessionLabel } : {}),
         };
 
         if (type === MessageTypes.REDO) {
@@ -173,7 +190,7 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
                         setConversationId(response.conversation_id);
                         conversationService.get(response.conversation_id).then((conversation) => {
                             if (conversation) {
-                                _updateConversation(activeConversationId, conversation);
+                                _updateConversation(response.conversation_id, conversation);
                             }
                         });
                     }
@@ -206,6 +223,7 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
             type,
             ...(activeConversationId ? { conversation_id: activeConversationId } : {}),
             ...(parentId ? { parent_id: parentId } : {}),
+            ...(!activeConversationId && sessionLabel ? { session_label: sessionLabel } : {}),
         };
 
         if (type === MessageTypes.REDO) {
@@ -214,6 +232,8 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
             setThread((prev) => [...getMessageThread(prev, parentId), userMessage, makeLoadingMessage(activeConversationId, "")]);
         }
         setSending(true);
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
 
         let loadedConversation = activeConversationId;
         let newCursor = cursor;
@@ -231,13 +251,14 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
 
                 // Handle conversation update if a new conversation was created
                 if (!activeConversationId && streamedMessage.conversation_id && !loadedConversation) {
-                    setConversationId(streamedMessage.conversation_id);
-                    conversationService.get(streamedMessage.conversation_id).then((conversation) => {
-                        if (conversation) {
-                            _updateConversation(streamedMessage.conversation_id, conversation);
-                        }
-                    });
                     loadedConversation = streamedMessage.conversation_id;
+                    setConversationId(streamedMessage.conversation_id);
+                    // Add placeholder with user input as title (avoids race condition with done callback)
+                    _updateConversation(streamedMessage.conversation_id, {
+                        id: streamedMessage.conversation_id,
+                        title: content.substring(0, 60),
+                        update_timestamp: new Date().getTime(),
+                    });
                 }
             },
             () => {
@@ -246,10 +267,16 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
                 setSending(false);
             },
             () => {
+                abortControllerRef.current = null;
+                // Remove loading placeholder immediately — don't wait for async refresh
+                setThread((prev) => prev.filter((m) => m.id !== LOADING_ID));
+                setSending(false);
                 if (!activeConversationId) {
+                    const titleFromContent = content.substring(0, 60);
                     conversationService.get(loadedConversation).then((conversation) => {
                         if (conversation) {
-                            _updateConversation(loadedConversation, conversation);
+                            _updateConversation(loadedConversation, { ...conversation, title: titleFromContent });
+                            conversationService.rename(loadedConversation, titleFromContent);
                             setMessages(conversation?.messages || []);
                             setThread(conversation?.messages || []);
                         }
@@ -260,9 +287,14 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
                         setThread(getMessageThread(conversation?.messages || [], newCursor));
                     });
                 }
-                setSending(false);
             },
+            abortController.signal,
         );
+    };
+
+    const stopSending = () => {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
     };
 
     const renameConversation = (conversationId: Conversation["id"], conversationName: string) => {
@@ -284,6 +316,15 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
         });
     };
 
+    const deleteAllConversations = () => {
+        conversationService.deleteAll().then((count) => {
+            if (count !== null) {
+                createNewConversation();
+                setConversations([]);
+            }
+        });
+    };
+
     const reactToMessage = (messageId: Message["id"], reactionContent: Reaction["content"]) => {
         if (activeConversationId) {
             conversationService.react(activeConversationId, messageId, reactionContent);
@@ -300,12 +341,16 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
                 cursor,
                 sending,
                 loading: initialLoading,
+                sessionLabel,
+                setSessionLabel,
                 createNewConversation,
                 changeConversation,
                 changeThread,
                 sendMessage: sendMessageStream,
+                stopSending,
                 renameConversation,
                 deleteConversation,
+                deleteAllConversations,
                 reactToMessage,
             }}
         >

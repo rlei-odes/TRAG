@@ -20,7 +20,7 @@ interface MessageItemProps extends Message {
 }
 
 export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageItemProps) => {
-    const { id, content, role, sources, className, reaction, isLastMessage, follow_up_questions, parent_id } = props;
+    const { id, content, role, sources, className, reaction, isLastMessage, follow_up_questions, parent_id, query_duration_ms, tokens_per_second, llm_model } = props;
     const isUser = role === "user";
     const { t } = useTranslation("app");
     const [isHover, setIsHover] = useState(false);
@@ -28,10 +28,23 @@ export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageI
     const [isEdit, setIsEdit] = useState(false);
     const [editableContent, setEditableContent] = useState(content);
 
-    const { sendMessage } = useMessaging();
+    const { sendMessage, sending, cursor } = useMessaging();
+    const [queryPhase, setQueryPhase] = useState<string>("idle");
 
     const isLoading = id === LOADING_ID;
     const isError = id === ERROR_ID;
+
+    useEffect(() => {
+        if (!isLoading) { setQueryPhase("idle"); return; }
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch("/api/v1/rag/query-status");
+                const data = await res.json();
+                setQueryPhase(data.phase ?? "idle");
+            } catch { /* ignore */ }
+        }, 500);
+        return () => clearInterval(interval);
+    }, [isLoading]);
 
     const hasSources = sources && sources.length > 0;
     const hasFollowUp = followUp && followUp.length > 0;
@@ -70,14 +83,16 @@ export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageI
                 <div className="flex pl-2 font-bold text-foreground">{isUser ? t("you") : config.agent.name}</div>
             </div>
             {isLoading ? (
-                <div className="flex flex-row pl-9 text-foreground items-center">
+                <div className="flex flex-row pl-9 text-foreground items-center gap-2">
                     {content}
+                    {queryPhase === "retrieving" && <span className="text-[11px] text-foreground/50">{t("rag.queryPhaseRetrieving")}</span>}
+                    {queryPhase === "generating" && <span className="text-[11px] text-foreground/50">{t("rag.queryPhaseGenerating")}</span>}
                     <div className="rounded-full w-3 h-3 bg-foreground blink"></div>
                 </div>
             ) : isError ? (
                 <div className="pl-9 text-foreground border border-destructive mt-2 p-4 pr-6 rounded-lg bg-destructive/15">{content}</div>
             ) : (
-                <MessageContent content={content} />
+                <MessageContent content={content} sources={sources} />
             )}
             {hasSources && (
                 <div className="pl-9 pt-2 text-foreground text-xs flex flex-col">
@@ -105,6 +120,23 @@ export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageI
                     </>
                 )}
             </div>
+            {!isUser && !isLoading && !isError && query_duration_ms != null && (
+                <div className="pl-9 pb-1 flex items-center gap-2 text-[10px] text-foreground/30 font-mono select-none">
+                    <span>{(query_duration_ms / 1000).toFixed(1)}s</span>
+                    {tokens_per_second != null && (
+                        <>
+                            <span className="opacity-40">·</span>
+                            <span>{tokens_per_second.toFixed(1)} tok/s</span>
+                        </>
+                    )}
+                    {llm_model && (
+                        <>
+                            <span className="opacity-40">·</span>
+                            <span>{llm_model}</span>
+                        </>
+                    )}
+                </div>
+            )}
             {hasFollowUp && (
                 <div className="pl-9 pt-2 text-foreground text-xs flex flex-col">
                     <div className="opacity-50">{t("suggestedFollowUp")}:</div>
@@ -112,10 +144,11 @@ export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageI
                         {followUp?.map((question, index) => (
                             <div
                                 key={index}
-                                className="mt-1 py-1 px-2 mr-2 border border-dashed rounded-md hover:cursor-pointer hover:bg-muted/50 "
+                                className="mt-1 py-1 px-2 mr-2 border border-dashed rounded-md hover:cursor-pointer hover:bg-muted/50 select-none"
                                 onClick={() => {
+                                    if (sending) return;
                                     setFollowUp([]);
-                                    sendMessage(question, MessageTypes.NEXT, id);
+                                    sendMessage(question, MessageTypes.NEXT, cursor);
                                 }}
                             >
                                 {question}
@@ -129,8 +162,8 @@ export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageI
 };
 
 // eslint-disable-next-line react/display-name
-const MessageContent = memo(({ content }: { content: string }) => (
+const MessageContent = memo(({ content, sources }: { content: string; sources?: Message["sources"] }) => (
     <div className="pl-9 text-foreground text-justify">
-        <Markdown content={content} />
+        <Markdown content={content} sources={sources} />
     </div>
 ));

@@ -1,3 +1,4 @@
+import hashlib
 from abc import ABC
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -30,10 +31,24 @@ class SessionCookieProvider(AuthProvider, ABC):
             request: Request,
             response: Response,
         ) -> None:
+            # Fixed single-user id — deterministic, no key-hash ambiguity.
+            stable_user_id = "admin"
             access_token = request.cookies.get(self.cookie_name)
+            needs_new_cookie = False
 
             if not access_token:
-                user = await self.controller.register_user(user_id=generate_uid())
+                needs_new_cookie = True
+            else:
+                # Re-issue if the existing cookie points to an old/different user_id.
+                try:
+                    claims = jwt.decode(access_token, self.secret_key, algorithms=[self.algorithm])
+                    if claims.get("sub") != stable_user_id:
+                        needs_new_cookie = True
+                except JWTError:
+                    needs_new_cookie = True
+
+            if needs_new_cookie:
+                user = await self.controller.register_user(user_id=stable_user_id)
                 response.set_cookie(
                     key=self.cookie_name,
                     value=jwt.encode({"sub": user.id}, self.secret_key, algorithm=self.algorithm),

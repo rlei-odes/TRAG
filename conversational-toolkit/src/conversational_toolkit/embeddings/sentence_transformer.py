@@ -55,12 +55,15 @@ class SentenceTransformerEmbeddings(EmbeddingsModel):
 
     async def get_embeddings(self, texts: Union[str, list[str]], **kwargs_encode: Any) -> NDArray[np.float64]:
         """Encode a string or a list of strings into embeddings using the model."""
-        # Encode the texts using the model
-        embedded_chunk = self.model.encode(texts, **kwargs_encode)
+        import asyncio
+        loop = asyncio.get_running_loop()
 
-        # If a single string is given, convert the output to a numpy array of numpy arrays
-        if isinstance(texts, str):
-            embedded_chunk = np.array([embedded_chunk])
+        def _encode():
+            result = self.model.encode(texts, **kwargs_encode)
+            if isinstance(texts, str):
+                return np.array([result])
+            return result
 
+        embedded_chunk = await loop.run_in_executor(None, _encode)
         logger.debug(f"{self.model_name} embeddings size: {embedded_chunk.shape}")
         return embedded_chunk  # type: ignore

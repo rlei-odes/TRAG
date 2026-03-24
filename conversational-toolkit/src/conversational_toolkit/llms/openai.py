@@ -73,6 +73,7 @@ class OpenAILLM(LLM):
         tool_choice: Literal["none", "auto", "required"] | None = None,
         response_format: completion_create_params.ResponseFormat | None = None,
         openai_api_key: str | None = None,
+        base_url: str | None = None,
     ):
         # TODO: Currently only supports text output
 
@@ -80,7 +81,7 @@ class OpenAILLM(LLM):
         if response_format is None:
             response_format = {"type": "text"}
 
-        self.client = AsyncOpenAI(api_key=openai_api_key)
+        self.client = AsyncOpenAI(api_key=openai_api_key, base_url=base_url)
         self.model = model_name
         self.temperature = temperature
         self.seed = seed

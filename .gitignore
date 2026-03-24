@@ -36,3 +36,17 @@ images_unstructured_pdf/
 
 node_modules/
 .next/
+
+# Claude Code memory (private)
+.claude/
+
+# Customer data (never commit)
+data */
+epub/
+
+# Build artifacts
+tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+
+# Systemd service files (contain local paths / secrets)
+*.service

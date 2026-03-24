@@ -86,7 +86,7 @@ class RAG(Agent):
                 sources_as_message.content.append(
                     MessageContent(
                         type="text",
-                        text=f"<source id='{source.id}'>{source.content}</source>",
+                        text=f"<source id='{source.id}' file='{source.metadata.get("source_file", "")}'>{source.content}</source>",
                     )
                 )
                 sources_list.append(sources_as_message)
@@ -96,7 +96,7 @@ class RAG(Agent):
                 sources_as_message.content.append(
                     MessageContent(
                         type="text",
-                        text=f"<source id='{source.id}' type='image'>",
+                        text=f"<source id='{source.id}' file='{source.metadata.get("source_file", "")}' type='image'>",
                     )
                 )
                 sources_as_message.content.append(

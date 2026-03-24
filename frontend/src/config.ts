@@ -1,13 +1,13 @@
 export const config = {
     app: {
-        name: "PrimePack AG",
-        description: "PrimePack AG provides CSRD-compliant sustainable packaging solutions, including pallets, cardboard boxes, and tape.",
-        favicon: "/favicon.ico",
+        name: "Vonlanthen INSIGHT",
+        description: "RAG-gestützte Wissensanalyse für Beratungsprojekte.",
+        favicon: "/favicon.png",
         logo: "/assets/logo.png",
-        version: "0.1.94",
+        version: "0.2.23",
         robots: "noindex",
     },
     agent: {
-        name: "Prime",
+        name: "INSIGHT",
     },
 };

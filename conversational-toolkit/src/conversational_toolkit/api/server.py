@@ -25,11 +25,13 @@ def create_app(
     allow_origins=None,
     dist_path: str = Paths.DIST_FOLDER,
     env: str = os.getenv("ENV", "local"),
+    conversation_metadata_provider=None,  # () -> dict
+    secret_key: Optional[str] = None,
 ) -> FastAPI:
     if auth_provider is None:
         auth_provider = SessionCookieProvider(
             controller=controller,
-            secret_key=os.getenv("SECRET_KEY", "1234567890"),
+            secret_key=secret_key or os.getenv("SECRET_KEY", "1234567890"),
             algorithm="HS256",
             env=env,
         )
@@ -48,7 +50,7 @@ def create_app(
     )
     auth_provider.bind_to_app(app)
 
-    api_router = create_api_router(controller, auth_provider)
+    api_router = create_api_router(controller, auth_provider, conversation_metadata_provider=conversation_metadata_provider)
     app.include_router(api_router)
 
     @app.get("/", response_model=None)

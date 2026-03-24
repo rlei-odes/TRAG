@@ -57,7 +57,13 @@ class ChromaDBVectorStore(VectorStore):
         :param top_k: Number of results to return
         :param filters: Optional filters for metadata
         """
-        results = self.collection.query(query_embeddings=embedding.tolist(), n_results=top_k, where=filters)  # type: ignore
+        import asyncio, logging as _log
+        _log.getLogger("uvicorn").debug("chromadb: get_chunks_by_embedding START")
+        loop = asyncio.get_running_loop()
+        results = await loop.run_in_executor(
+            None, lambda: self.collection.query(query_embeddings=embedding.tolist(), n_results=top_k, where=filters)
+        )  # type: ignore
+        _log.getLogger("uvicorn").debug(f"chromadb: get_chunks_by_embedding DONE, {len(results['ids'][0]) if results and results['ids'] else 0} results")
 
         chunk_matches = []
         if results and results["ids"]:
@@ -92,10 +98,14 @@ class ChromaDBVectorStore(VectorStore):
                 ]
             }
         """
+        import asyncio, logging as _log
+        _log.getLogger("uvicorn").debug("chromadb: get_chunks_by_filter START")
+        loop = asyncio.get_running_loop()
         if not filters:
-            results = self.collection.get()
+            results = await loop.run_in_executor(None, self.collection.get)
         else:
-            results = self.collection.get(where=filters)  # type: ignore[arg-type]
+            results = await loop.run_in_executor(None, lambda: self.collection.get(where=filters))  # type: ignore[arg-type]
+        _log.getLogger("uvicorn").debug(f"chromadb: get_chunks_by_filter DONE, {len(results['ids']) if results and results['ids'] else 0} results")
 
         chunk_records = []
         if results and results["ids"]:
@@ -112,6 +122,10 @@ class ChromaDBVectorStore(VectorStore):
                     )
                 )
         return chunk_records
+
+    async def count(self) -> int:
+        """Return the total number of chunks in the collection."""
+        return self.collection.count()
 
     async def get_chunks_by_ids(self, chunk_ids: int | list[int]) -> list[Chunk]:
         """

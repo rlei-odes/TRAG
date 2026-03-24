@@ -27,7 +27,7 @@ class BM25Retriever(Retriever[ChunkMatch]):
     def __init__(self, vector_store: VectorStore, top_k: int) -> None:
         super().__init__(top_k)
         self.vs = vector_store
-        self.corpus = ([],)
+        self.corpus = []
         self.tokenized = []
         self._bm25 = None
 
@@ -39,9 +39,18 @@ class BM25Retriever(Retriever[ChunkMatch]):
     async def retrieve(self, query: str) -> list[ChunkMatch]:
         """Score the corpus against 'query' using BM25 and return the top 'top_k' matches."""
         if self._bm25 is None:
+            import asyncio
+            loop = asyncio.get_running_loop()
             self.corpus = await self.vs.get_chunks_by_filter()
+
+            # Guard: if the vector store has no chunks yet, return early.
+            # BM25Okapi raises ZeroDivisionError on an empty corpus.
+            if not self.corpus:
+                return []
+
             tokenized = [self._tokenize(chunk.content) for chunk in self.corpus]
-            self._bm25 = BM25Okapi(tokenized)
+            # BM25Okapi index build is CPU-bound — run in thread to avoid blocking event loop
+            self._bm25 = await loop.run_in_executor(None, lambda: BM25Okapi(tokenized))
 
         query_terms = self._tokenize(query)
         scores: list[float] = self._bm25.get_scores(query_terms).tolist()
@@ -58,3 +67,14 @@ class BM25Retriever(Retriever[ChunkMatch]):
             )
             for i in top_indices
         ]
+
+    def invalidate_cache(self) -> None:
+        """
+        Reset the BM25 index so it is rebuilt on the next retrieve() call.
+
+        Call this whenever documents are added to or removed from the vector
+        store, so the BM25 corpus stays in sync.
+        """
+        self._bm25 = None
+        self.corpus = []
+        self.tokenized = []

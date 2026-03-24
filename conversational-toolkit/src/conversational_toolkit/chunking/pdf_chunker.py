@@ -32,6 +32,7 @@ class PDFChunker(Chunker):
         engine: MarkdownConverterEngine = MarkdownConverterEngine.DOCLING,
         write_images: bool = False,
         image_path: str | None = None,
+        do_ocr: bool = True,
     ) -> str:
         if engine == MarkdownConverterEngine.MARKITDOWN:
             if write_images:
@@ -39,16 +40,17 @@ class PDFChunker(Chunker):
             result = MarkItDown().convert(file_path)
             return str(result.text_content)
         elif engine == MarkdownConverterEngine.DOCLING:
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = do_ocr
             if write_images and image_path:
-                pipeline_options = PdfPipelineOptions()
                 pipeline_options.generate_picture_images = True
 
-                doc_converter = DocumentConverter(
-                    format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
-                )
-                conv_result = doc_converter.convert(file_path)
+            doc_converter = DocumentConverter(
+                format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+            )
+            conv_result = doc_converter.convert(file_path)
 
-                # Manually save images from PictureItem elements
+            if write_images and image_path:
                 doc_filename = Path(file_path).stem
                 picture_counter = 0
                 for element, _level in conv_result.document.iterate_items():
@@ -58,9 +60,7 @@ class PDFChunker(Chunker):
                         with open(image_filename, "wb") as fp:
                             element.image.pil_image.save(fp, format="PNG")
 
-                return conv_result.document.export_to_markdown()  # type: ignore[no-any-return]
-            else:
-                return DocumentConverter().convert(file_path).document.export_to_markdown()  # type: ignore[no-any-return]
+            return conv_result.document.export_to_markdown()  # type: ignore[no-any-return]
         else:
             raise NotImplementedError(f"Engine '{engine}' is not supported.")
 
@@ -75,10 +75,11 @@ class PDFChunker(Chunker):
         engine: MarkdownConverterEngine = MarkdownConverterEngine.DOCLING,
         write_images: bool = True,
         image_path: str | None = "./tmp",
+        do_ocr: bool = True,
     ) -> list[Chunk]:
-        if not os.path.exists(image_path):
+        if write_images and image_path and not os.path.exists(image_path):
             os.makedirs(image_path)
-        markdown = self._pdf2markdown(file_path, engine, write_images=write_images, image_path=image_path)
+        markdown = self._pdf2markdown(file_path, engine, write_images=write_images, image_path=image_path, do_ocr=do_ocr)
         header_pattern = re.compile(r"^(#{1,6}\s.*)$", re.MULTILINE)
         matches = list(header_pattern.finditer(markdown))
 

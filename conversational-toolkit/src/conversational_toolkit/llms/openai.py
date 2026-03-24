@@ -22,9 +22,7 @@ from conversational_toolkit.utils.metadata_provider import MetadataProvider
 
 
 def message_to_openai(msg: LLMMessage) -> ChatCompletionMessageParam:
-    # TODO: Currently, assumes images are always base64
-    # TODO: Currently, always interpreted as PNG, to change
-
+    # TODO Currently, assumes images are always base64 and always interpreted as PNG -> change in future
     message: dict[str, Any] = {
         "role": msg.role.value,
     }
@@ -34,6 +32,14 @@ def message_to_openai(msg: LLMMessage) -> ChatCompletionMessageParam:
         if "text" in content.type and content.text is not None:
             message["content"].append({"type": "text", "text": content.text})
         elif "image" in content.type and content.image_url is not None:
+            if not content.image_url.startswith("data:"):
+                raise NotImplementedError(
+                    "Only base64-encoded images are supported. URL images are not yet implemented."
+                )
+            if not content.image_url.startswith("data:image/png"):
+                raise NotImplementedError(
+                    "Only PNG images are supported. Other formats (JPEG, WEBP, etc.) are not yet implemented."
+                )
             message["content"].append(
                 {
                     "type": "image_url",
@@ -73,8 +79,8 @@ class OpenAILLM(LLM):
         tool_choice: Literal["none", "auto", "required"] | None = None,
         response_format: completion_create_params.ResponseFormat | None = None,
         openai_api_key: str | None = None,
-    ):
-        # TODO: Currently only supports text output
+    ) -> None:
+        # NOTE: Currently only supports text output. If OpenAI chat completions API will also return images in addition to the text content, the response parsing below will need to handle image content.
 
         super().__init__()
         if response_format is None:

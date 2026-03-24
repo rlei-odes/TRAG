@@ -1,6 +1,3 @@
-# WARNING: CODE NOT CHECKED!! (ChatGPT mainly coded for a hackathon)
-# TODO: Check the code before any push in project
-
 import io
 import base64
 from typing import Any, Optional, cast
@@ -25,7 +22,6 @@ from conversational_toolkit.chunking.base import Chunk
 from conversational_toolkit.embeddings.base import EmbeddingsModel
 
 
-# Minimal "embedding-only" model head (matches the HF repo script idea)
 @dataclass
 class Qwen3VLForEmbeddingOutput(ModelOutput):
     last_hidden_state: Optional[torch.FloatTensor] = None
@@ -75,7 +71,6 @@ class Qwen3VLForEmbedding(Qwen3VLPreTrainedModel):
         )
 
 
-# Embedder wrapper (same algorithm as scripts/qwen3_vl_embedding.py)
 class _Qwen3VLEmbedder:
     def __init__(
         self,
@@ -84,9 +79,9 @@ class _Qwen3VLEmbedder:
         instruction: str = "Represent the user's input.",
         max_length: int = 8192,
         normalize: bool = True,
-        output_dim: Optional[int] = None,  # 64..2048 supported by the model (MRL); we slice.
+        output_dim: Optional[int] = None,
         torch_dtype: Optional[torch.dtype] = None,
-        attn_implementation: Optional[str] = None,  # e.g. "flash_attention_2"
+        attn_implementation: Optional[str] = None,
         device: Optional[str] = None,
         min_pixels: int = 4 * (16 * 2) * (16 * 2),
         max_pixels: int = 1800 * (16 * 2) * (16 * 2),
@@ -159,7 +154,6 @@ class _Qwen3VLEmbedder:
         processor: Any = self.processor
         text = processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
 
-        # Vision parsing (image/video tokens, grids, etc.)
         images, video_inputs, raw_video_kwargs = process_vision_info(
             conversations,
             image_patch_size=16,
@@ -213,7 +207,6 @@ class _Qwen3VLEmbedder:
 
         emb = self._pool_last_token(outputs.last_hidden_state, model_inputs["attention_mask"])
 
-        # Optional Matryoshka slicing (model is trained to support multiple dims)
         od = output_dim if output_dim is not None else self.output_dim
         if od is not None:
             emb = emb[:, :od]
@@ -251,7 +244,6 @@ def _sniff_mime_type(s: str) -> str:
     return "text/plain"
 
 
-# CLIP-like facade
 class Qwen3VLEmbeddings(EmbeddingsModel):
     # TODO: Update Embedding main class to support images as well, so not inheriting it now.
 
@@ -262,8 +254,8 @@ class Qwen3VLEmbeddings(EmbeddingsModel):
         instruction: str = "Represent the user's input.",
         output_dim: int | None = None,
         normalize: bool = True,
-        torch_dtype: torch.dtype | None = None,  # e.g. torch.float16
-        attn_implementation: str | None = None,  # e.g. "flash_attention_2"
+        torch_dtype: torch.dtype | None = None,
+        attn_implementation: str | None = None,
         device: str | None = None,
     ):
         self.embedder = _Qwen3VLEmbedder(

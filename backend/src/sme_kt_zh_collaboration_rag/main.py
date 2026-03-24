@@ -5,6 +5,7 @@ from textwrap import dedent
 from typing import Any
 
 import uvicorn
+from loguru import logger
 
 from conversational_toolkit.agents.base import AgentAnswer
 from conversational_toolkit.agents.rag import RAG
@@ -41,6 +42,8 @@ from sme_kt_zh_collaboration_rag.feature0_baseline_rag import (
     build_llm,
 )
 from sme_kt_zh_collaboration_rag.utils.json import parse_llm_json_stream
+
+logger.add(Path(__file__).parents[4] / "logs" / "api.log", rotation="50 MB")
 
 BACKEND = os.getenv("BACKEND", "openai")
 _secret = pathlib.Path("/secrets/OPENAI_API_KEY")

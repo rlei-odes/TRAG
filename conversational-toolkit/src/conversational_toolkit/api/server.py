@@ -4,7 +4,6 @@ from typing import Optional, Union
 from fastapi import FastAPI, __version__
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from loguru import logger
 from starlette.responses import FileResponse, JSONResponse
 
 from conversational_toolkit.api.auth.base import AuthProvider
@@ -14,9 +13,6 @@ from conversational_toolkit.conversation_database.controller import (
     ConversationalToolkitController,
 )
 from conversational_toolkit.utils.paths import Paths
-
-# TODO: This should not be in the library. Otherwise we can't mute library logs
-logger.add(Paths.LOGS_FOLDER + "/api.log", rotation="50 MB")
 
 
 def create_app(

@@ -93,7 +93,6 @@ class ToolAgent(Agent):
                 steps.append({**function_response, "role": "tool", "function_name": function_name})
 
             if len(steps) > self.max_steps:
-                # TODO: Maybe throw an exception here?
                 yield AgentAnswer(
                     content=[MessageContent(type="text", text="Request is too complex to execute")],
                     role=Roles.ASSISTANT,

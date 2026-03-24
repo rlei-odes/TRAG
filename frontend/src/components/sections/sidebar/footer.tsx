@@ -38,28 +38,29 @@ export const Footer: FunctionComponent = () => {
 
     const isDarkMode = theme === Theme.DARK;
     return (
-        <div className="flex justify-center w-full py-2 px-2">
+        <div className="flex justify-center w-full py-1 px-2">
             <div className="flex flex-col items-center">
                 <label className="text-xs opacity-50">
                     {t("version", { version: config.app.version })}
                     {startedAt && <span className="ml-1">· ↑ {startedAt}</span>}
                 </label>
-                <div className="text-xs opacity-50 text-center">
+                <div className="text-xs opacity-50 text-center leading-tight">
                     <Trans
                         i18nKey="credits"
                         components={{
                             1: (
                                 <a
-                                    className="cursor-pointer"
-                                    href="https://www.vonlanthen.tv"
+                                    className={cn("cursor-pointer", isDarkMode ? "text-blue-400" : "text-blue-600")}
+                                    href="https://www.datascience.ch"
                                     target="_blank"
                                     rel="noreferrer"
                                 />
                             ),
-                            2: (
+                            2: <br />,
+                            3: (
                                 <a
                                     className={cn("cursor-pointer", isDarkMode ? "text-blue-400" : "text-blue-600")}
-                                    href="https://github.com/SwissDataScienceCenter"
+                                    href="https://www.vonlanthen.tv"
                                     target="_blank"
                                     rel="noreferrer"
                                 />

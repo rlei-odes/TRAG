@@ -1,5 +1,5 @@
 """
-FastAPI server entry point — Vonlanthen INSIGHT RAG
+FastAPI server entry point — RAG Assistant
 
 Environment variables:
     BACKEND           — LLM backend: 'ollama' (default) | 'openai' | 'anthropic'
@@ -7,7 +7,7 @@ Environment variables:
     RESET_VS          — '1' to rebuild vector store from scratch on startup
     OPENAI_API_KEY    — Required when BACKEND=openai or EMBEDDING_BACKEND=openai
     ANTHROPIC_API_KEY — Required when BACKEND=anthropic
-    ALLOW_ORIGINS     — Comma-separated CORS origins, e.g. https://insight.vonlanthen.ch
+    ALLOW_ORIGINS     — Comma-separated CORS origins, e.g. https://your-domain.example.com
 
 Multi-KB:
     Knowledge bases are managed via /api/v1/kb endpoints.
@@ -104,7 +104,7 @@ BACKEND = os.getenv("BACKEND", "ollama")
 RESET_VS = os.getenv("RESET_VS", "0") == "1"
 
 # Comma-separated list of allowed CORS origins.
-# Example: ALLOW_ORIGINS=https://insight.vonlanthen.ch,https://demo.vonlanthen.ch
+# Example: ALLOW_ORIGINS=https://rag.example.com,https://demo.example.com
 _raw_origins = os.getenv("ALLOW_ORIGINS", "")
 ALLOW_ORIGINS = (
     [o.strip() for o in _raw_origins.split(",") if o.strip()]
@@ -126,7 +126,7 @@ _DB_DIR.mkdir(exist_ok=True)
 # System prompt
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = dedent("""
-    Du bist INSIGHT, ein Dokumentenanalyse-Assistent für Beratungsprojekte von Vonlanthen.
+    Du bist ein Dokumentenanalyse-Assistent.
     Deine Aufgabe: präzise, nützliche Antworten auf Basis der bereitgestellten Quellen.
 
     VORGEHEN:

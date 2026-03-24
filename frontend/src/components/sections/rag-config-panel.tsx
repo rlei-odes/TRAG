@@ -199,83 +199,41 @@ const BUILTIN_PRESETS: Preset[] = [
     {
         // Ausgewogener Einstieg — funktioniert für die meisten Projektdokumente
         name: "Standard",
-        data: {
-            embedding_backend: "local", embedding_model: "nomic-ai/nomic-embed-text-v1", nomic_prefix: true, max_file_size_mb: 20, embedding_batch_size: 50, pdf_ocr_enabled: true,
-            retriever_top_k: 5, rrf_k: 60, bm25_enabled: true, query_expansion: 0, hyde_enabled: false,
-            reranking_enabled: false, reranking_candidate_pool: 15,
-            llm_backend: "ollama", llm_model: "mistral-nemo:12b", llm_temperature: 0.3,
-            ollama_host: "", system_prompt: "", follow_up_count: 3,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, retriever_top_k: 5, llm_temperature: 0.3 },
     },
     {
         // Angebote & Ausschreibungen: breites Retrieval, präzise LLM-Antwort
         // Gut für: Lieferantenvergleiche, Kostenpositionen, Konditionen
         name: "Angebots-Analyse",
-        data: {
-            embedding_backend: "local", embedding_model: "nomic-ai/nomic-embed-text-v1", nomic_prefix: true, max_file_size_mb: 20, embedding_batch_size: 50, pdf_ocr_enabled: true,
-            retriever_top_k: 8, rrf_k: 60, bm25_enabled: true, query_expansion: 0, hyde_enabled: false,
-            reranking_enabled: false, reranking_candidate_pool: 20,
-            llm_backend: "ollama", llm_model: "mistral-nemo:12b", llm_temperature: 0.15,
-            ollama_host: "", system_prompt: "", follow_up_count: 3,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, retriever_top_k: 8, reranking_candidate_pool: 20, llm_temperature: 0.15 },
     },
     {
         // Technische Dokumente: EPDs, Datenblätter, Normen
         // Sehr tiefe Temperatur → nur belegte Fakten, keine Interpolation
         name: "Technische Fakten",
-        data: {
-            embedding_backend: "local", embedding_model: "nomic-ai/nomic-embed-text-v1", nomic_prefix: true, max_file_size_mb: 30, embedding_batch_size: 50, pdf_ocr_enabled: true,
-            retriever_top_k: 6, rrf_k: 60, bm25_enabled: true, query_expansion: 0, hyde_enabled: false,
-            reranking_enabled: false, reranking_candidate_pool: 15,
-            llm_backend: "ollama", llm_model: "mistral-nemo:12b", llm_temperature: 0.05,
-            ollama_host: "", system_prompt: "", follow_up_count: 2,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, max_file_size_mb: 30, retriever_top_k: 6, llm_temperature: 0.05, follow_up_count: 2 },
     },
     {
         // Mehrere Dokumente vergleichen: top-k hoch, BM25 + semantisch
         // Gut für: Bietervergleich, Produktvergleich, Multi-Lieferanten-KB
         name: "Multi-Dok Vergleich",
-        data: {
-            embedding_backend: "local", embedding_model: "nomic-ai/nomic-embed-text-v1", nomic_prefix: true, max_file_size_mb: 20, embedding_batch_size: 50, pdf_ocr_enabled: true,
-            retriever_top_k: 10, rrf_k: 60, bm25_enabled: true, query_expansion: 1, hyde_enabled: false,
-            reranking_enabled: false, reranking_candidate_pool: 25,
-            llm_backend: "ollama", llm_model: "mistral-nemo:12b", llm_temperature: 0.2,
-            ollama_host: "", system_prompt: "", follow_up_count: 3,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, retriever_top_k: 10, query_expansion: 1, reranking_candidate_pool: 25, llm_temperature: 0.2 },
     },
     {
         // Maximale Qualität mit bge-m3 (multilingual, braucht Re-Index)
         // Gut für: mehrsprachige Projektdokumente, komplexe Fachbegriffe
         name: "bge-m3 Präzision",
-        data: {
-            embedding_backend: "local", embedding_model: "BAAI/bge-m3", nomic_prefix: false, max_file_size_mb: 20, embedding_batch_size: 10, pdf_ocr_enabled: true,
-            retriever_top_k: 7, rrf_k: 60, bm25_enabled: true, query_expansion: 0, hyde_enabled: false,
-            reranking_enabled: false, reranking_candidate_pool: 20,
-            llm_backend: "ollama", llm_model: "mistral-nemo:12b", llm_temperature: 0.2,
-            ollama_host: "", system_prompt: "", follow_up_count: 3,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, embedding_model: "BAAI/bge-m3", nomic_prefix: false, embedding_batch_size: 10, retriever_top_k: 7, reranking_candidate_pool: 20, llm_temperature: 0.2 },
     },
     {
         // Qualität mit langsameren Methoden — nur wenn Zeit keine Rolle spielt
         name: "Qualität (langsam)",
-        data: {
-            embedding_backend: "local", embedding_model: "nomic-ai/nomic-embed-text-v1", nomic_prefix: true, max_file_size_mb: 20, embedding_batch_size: 50, pdf_ocr_enabled: true,
-            retriever_top_k: 8, rrf_k: 60, bm25_enabled: true, query_expansion: 2, hyde_enabled: true,
-            reranking_enabled: false, reranking_candidate_pool: 20,
-            llm_backend: "ollama", llm_model: "mistral-nemo:12b", llm_temperature: 0.2,
-            ollama_host: "", system_prompt: "", follow_up_count: 3,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, retriever_top_k: 8, query_expansion: 2, hyde_enabled: true, reranking_candidate_pool: 20, llm_temperature: 0.2 },
     },
     {
         // Schnellste lokale Option für erste Orientierung
         name: "Schnell (lokal)",
-        data: {
-            embedding_backend: "local", embedding_model: "nomic-ai/nomic-embed-text-v1", nomic_prefix: true, max_file_size_mb: 20, embedding_batch_size: 50, pdf_ocr_enabled: true,
-            retriever_top_k: 4, rrf_k: 60, bm25_enabled: true, query_expansion: 0, hyde_enabled: false,
-            reranking_enabled: false, reranking_candidate_pool: 10,
-            llm_backend: "ollama", llm_model: "llama3.2:3b", llm_temperature: 0.3,
-            ollama_host: "", system_prompt: "", follow_up_count: 2,
-        },
+        data: { ...DEFAULT_KB_CONFIG, ...DEFAULT_SESSION, retriever_top_k: 4, reranking_candidate_pool: 10, llm_model: "llama3.2:3b", llm_temperature: 0.3, follow_up_count: 2 },
     },
 ];
 
@@ -357,7 +315,7 @@ const KBForm: FunctionComponent<KBFormProps> = ({ initial, onSubmit, onCancel, i
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:8080";
+const API_BASE = process.env.NEXT_PUBLIC_SERVER_URL || "";
 
 async function fetchUserPresets(kbId: string): Promise<Preset[]> {
     try {
@@ -429,7 +387,7 @@ export const RagConfigPanel: FunctionComponent = () => {
             if (kb) {
                 setActiveKb(kb);
                 setKbConfig({
-                    embedding_backend: (kb.embedding_backend === "openai" ? "custom" : kb.embedding_backend) as KBConfig["embedding_backend"],
+                    embedding_backend: ((kb.embedding_backend as string) === "openai" ? "custom" : kb.embedding_backend) as KBConfig["embedding_backend"],
                     embedding_model: kb.embedding_model,
                     embedding_ollama_host: kb.embedding_ollama_host ?? "",
                     embedding_custom_base_url: kb.embedding_custom_base_url ?? "",
@@ -558,7 +516,7 @@ export const RagConfigPanel: FunctionComponent = () => {
                 const kb: KBInfo = await r.json();
                 setActiveKb(kb);
                 setKbConfig({
-                    embedding_backend: (kb.embedding_backend === "openai" ? "custom" : kb.embedding_backend) as KBConfig["embedding_backend"],
+                    embedding_backend: ((kb.embedding_backend as string) === "openai" ? "custom" : kb.embedding_backend) as KBConfig["embedding_backend"],
                     embedding_model: kb.embedding_model,
                     embedding_ollama_host: kb.embedding_ollama_host ?? "",
                     embedding_custom_base_url: kb.embedding_custom_base_url ?? "",
@@ -738,11 +696,16 @@ export const RagConfigPanel: FunctionComponent = () => {
         setKbConfig({
             embedding_backend: preset.data.embedding_backend,
             embedding_model: preset.data.embedding_model,
+            embedding_ollama_host: preset.data.embedding_ollama_host ?? "",
+            embedding_custom_base_url: preset.data.embedding_custom_base_url ?? "",
+            embedding_custom_api_key: preset.data.embedding_custom_api_key ?? "",
             nomic_prefix: preset.data.nomic_prefix,
             max_file_size_mb: preset.data.max_file_size_mb,
             embedding_batch_size: preset.data.embedding_batch_size ?? 50,
             pdf_ocr_enabled: preset.data.pdf_ocr_enabled ?? true,
             max_chunk_tokens: preset.data.max_chunk_tokens ?? 0,
+            vs_type: preset.data.vs_type ?? "chromadb",
+            vs_connection_string: preset.data.vs_connection_string ?? "",
         });
         setSession({
             retriever_top_k: preset.data.retriever_top_k,
@@ -1101,7 +1064,7 @@ export const RagConfigPanel: FunctionComponent = () => {
                                         type="text"
                                         value={kbConfig.vs_connection_string}
                                         onChange={(e) => updateKbConfig("vs_connection_string", e.target.value)}
-                                        placeholder="postgresql://user:pass@192.168.1.196:5432/rag"
+                                        placeholder="postgresql://user:pass@localhost:5432/rag"
                                         className="bg-muted border border-border text-foreground text-[10px] rounded px-2 py-1 focus:outline-none focus:border-blue-400 w-full font-mono"
                                     />
                                 </FieldRow>
@@ -1201,7 +1164,7 @@ export const RagConfigPanel: FunctionComponent = () => {
                                 <NumberInput value={kbConfig.embedding_batch_size} min={5} max={1000} step={5} onChange={(v) => updateKbConfig("embedding_batch_size", v)} />
                             </FieldRow>
                             <FieldRow label={t("rag.fieldMaxChunkTokens")} hint={t("rag.fieldMaxChunkTokensHint")}>
-                                <NumberInput value={kbConfig.max_chunk_tokens} min={0} max={800} step={50} onChange={(v) => updateKbConfig("max_chunk_tokens", v)} />
+                                <NumberInput value={kbConfig.max_chunk_tokens} min={0} max={2000} step={1} onChange={(v) => updateKbConfig("max_chunk_tokens", v)} />
                             </FieldRow>
                             <FieldRow label={t("rag.fieldPdfOcr")} hint={t("rag.fieldPdfOcrHint")}>
                                 <Toggle checked={kbConfig.pdf_ocr_enabled} onChange={(v) => updateKbConfig("pdf_ocr_enabled", v)} />

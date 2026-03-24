@@ -4,7 +4,7 @@
 
 @layer base {
     :root {
-        /* Vonlanthen INSIGHT — Light Mode */
+        /* RAG Assistant — Light Mode */
         --background: 210, 20%, 98%;
         --foreground: 216, 15%, 20%;
 
@@ -17,7 +17,7 @@
         --code: 216, 15%, 20%;
         --code-background: 210, 20%, 93%;
 
-        /* Primary: Vonlanthen Blue */
+        /* Primary: Blue */
         --primary: 206, 100%, 40%;
         --primary-foreground: 0, 0%, 100%;
 
@@ -43,7 +43,7 @@
     }
 
     .dark {
-        /* Vonlanthen INSIGHT — Dark Mode */
+        /* RAG Assistant — Dark Mode */
         --background: 0, 0%, 7%;
         --foreground: 0, 0%, 94%;
 
@@ -56,7 +56,7 @@
         --code: 0, 0%, 94%;
         --code-background: 0, 0%, 7%;
 
-        /* Primary: Vonlanthen Blue (lighter for dark bg) */
+        /* Primary: Blue (lighter for dark bg) */
         --primary: 214, 83%, 56%;
         --primary-foreground: 0, 0%, 100%;
 

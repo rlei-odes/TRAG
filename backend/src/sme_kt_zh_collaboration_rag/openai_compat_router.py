@@ -35,7 +35,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model: str = "vonlanthen-insight"
+    model: str = "rag-assistant"
     messages: list[ChatMessage]
     stream: bool = False
     temperature: float | None = None
@@ -157,10 +157,10 @@ def create_openai_compat_router(agent) -> APIRouter:
             "object": "list",
             "data": [
                 {
-                    "id": "vonlanthen-insight",
+                    "id": "rag-assistant",
                     "object": "model",
                     "created": int(time.time()),
-                    "owned_by": "vonlanthen",
+                    "owned_by": "sdsc",
                 }
             ],
         }

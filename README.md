@@ -129,15 +129,30 @@ jupyter lab
 **Full stack (backend API + frontend):**
 
 ```bash
-# Start the backend (builds vector store on first run, ~30 s)
-BACKEND=openai python -m sme_kt_zh_collaboration_rag.main
-# or
+# 1. Start the backend
+cd backend
 BACKEND=ollama python -m sme_kt_zh_collaboration_rag.main
+# or with OpenAI:   OPENAI_API_KEY=sk-... BACKEND=openai python -m sme_kt_zh_collaboration_rag.main
+# or with LiteLLM:  LITELLM_BASE_URL=https://... LITELLM_API_KEY=... BACKEND=litellm python -m sme_kt_zh_collaboration_rag.main
 
-# In a separate terminal, start the frontend
-cd frontend && npm install && npm run dev
-# Open http://localhost:3000
+# 2. In a separate terminal, start the frontend
+cd frontend
+cp .env.example .env    # set API_KEY to a password of your choice
+npm install && npm run dev
+# → http://localhost:3000
 ```
+
+> **Authentication:** The frontend requires a password. Copy `frontend/.env.example`
+> to `frontend/.env` and set `API_KEY` before starting. Without it the login will fail.
+
+**First run — create and index a knowledge base:**
+
+1. Open the app and log in.
+2. In the **RAG Parameters** panel (right side), click **+** next to the knowledge base selector.
+3. Enter a name and one or more source directories (absolute path or relative to the project root, e.g. `data/`).
+4. Configure embedding (default: local SentenceTransformer — no API key required).
+5. Click **Re-index** to build the vector store. A progress bar shows file and chunk count.
+6. Once indexed, ask questions in the chat.
 
 **Single query from the command line:**
 
@@ -340,6 +355,39 @@ answered as "not in our portfolio."
 
 ---
 
+## Extensions (contributed by Vonlanthen INSIGHT)
+
+This fork extends the baseline with a production-ready full-stack interface:
+
+| Area | Feature |
+|---|---|
+| **Multi-KB** | Multiple knowledge bases with hot-swap — no restart needed |
+| **Vector DB** | ChromaDB (local, default) or pgvector (PostgreSQL) — selectable per KB |
+| **Hybrid Retrieval** | BM25 + semantic via Reciprocal Rank Fusion (RRF) |
+| **Query techniques** | Query Expansion, HyDE, LLM Reranking — configurable per session |
+| **Embedding** | `local` (SentenceTransformer, offline), `ollama`, `litellm`, `custom` (any OpenAI-compatible endpoint) |
+| **LLM** | Ollama, OpenAI, Anthropic, LiteLLM — switchable at runtime |
+| **RAG Config Panel** | Collapsible right-side panel with presets, live parameter tuning |
+| **Auth** | Password-protected login via session cookie (`API_KEY` in `.env`) |
+| **OpenAI-compatible endpoint** | `POST /v1/chat/completions` — works with Open WebUI, curl, etc. |
+| **EPUB / DOCX chunking** | via MarkItDown |
+| **i18n** | DE / EN / FR / IT |
+| **Generation stats** | Query duration, tokens/s, model name shown per response |
+| **Conversation management** | Rename, delete, group by date |
+
+**Environment variables for the backend:**
+
+| Variable | Required for | Example |
+|---|---|---|
+| `BACKEND` | All | `ollama` / `openai` / `litellm` |
+| `OPENAI_API_KEY` | OpenAI LLM or embedding | `sk-...` |
+| `ANTHROPIC_API_KEY` | Anthropic LLM | `sk-ant-...` |
+| `LITELLM_BASE_URL` | LiteLLM proxy (LLM + embedding) | `https://your-litellm-host/v1` |
+| `LITELLM_API_KEY` | LiteLLM proxy | `sk-...` |
+| `ALLOW_ORIGINS` | CORS (default: `http://localhost:3000`) | `*` |
+
+---
+
 ## LLM Backends
 
 `BACKEND` must always be set explicitly — there is no default.
@@ -361,7 +409,7 @@ you through the full workflow from cloning to an approved pull request.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/kanton-zurich/sme-kt-zh-collaboration-rag.git
+git clone https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag.git
 cd sme-kt-zh-collaboration-rag
 ```
 

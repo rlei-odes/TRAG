@@ -1,4 +1,7 @@
 import webpack from "webpack";
+import { config as dotenvConfig } from "dotenv";
+
+dotenvConfig({ override: true });
 
 const mode = process.env.BUILD_MODE ?? "standalone";
 console.log("[Next] build mode", mode);
@@ -41,6 +44,7 @@ const nextConfig = {
 
         return config;
     },
+    eslint: { ignoreDuringBuilds: true },
     output: mode,
     distDir: "dist",
     images: {

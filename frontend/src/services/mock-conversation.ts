@@ -81,6 +81,12 @@ class ConversationService extends ApiService {
         }
     }
 
+    async deleteAll(): Promise<number | null> {
+        const count = cache.length;
+        cache.splice(0, cache.length);
+        return count;
+    }
+
     async rename(conversationId: Conversation["id"], conversationName: string): Promise<Conversation | null> {
         try {
             if (!conversationId) {

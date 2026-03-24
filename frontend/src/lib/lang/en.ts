@@ -2,7 +2,7 @@ export const app = {
     notFound: "Page not found",
     messagePlaceholder: "Ask a question or type a message...",
     disclaimer: "{{name}} can make mistakes. Consider checking important information.",
-    credits: "Vonlanthen INSIGHT <1>💙</1> and credits to <2>SDSC</2>",
+    credits: "RAG Assistant with 💙 by <1>SDSC</1><2/>and extended by <3>Vonlanthen INSIGHT</3>",
     welcome: "What do you want to know?",
     settings: "Settings",
     language: "Language",

@@ -47,16 +47,17 @@ export const DisclaimerDialog: FunctionComponent = () => {
                         components={{
                             1: (
                                 <a
-                                    className={cn("cursor-pointer pl-[4px]", isDarkMode ? "text-blue-400" : "text-blue-600")}
-                                    href="https://www.vonlanthen.tv"
+                                    className={cn("cursor-pointer", isDarkMode ? "text-blue-400" : "text-blue-600")}
+                                    href="https://www.datascience.ch"
                                     target="_blank"
                                     rel="noreferrer"
                                 />
                             ),
-                            2: (
+                            2: <br />,
+                            3: (
                                 <a
                                     className={cn("cursor-pointer", isDarkMode ? "text-blue-400" : "text-blue-600")}
-                                    href="https://github.com/SwissDataScienceCenter"
+                                    href="https://www.vonlanthen.tv"
                                     target="_blank"
                                     rel="noreferrer"
                                 />

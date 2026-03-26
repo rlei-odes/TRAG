@@ -374,6 +374,11 @@ _index_status: dict = {
     "embed_batch": 0, "embed_total_batches": 0,
     "kb_name": "", "finished_at": "",
 }
+_cancel_requested: bool = False
+
+
+class _IndexingCancelled(Exception):
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +386,8 @@ _index_status: dict = {
 # ---------------------------------------------------------------------------
 async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
     """Chunk + embed all files in kb.data_dirs. Returns (chunks_indexed, files_processed)."""
+    global _cancel_requested  # noqa: PLW0603
+    _cancel_requested = False
     _index_status.update({
         "indexing": True, "phase": "loading",
         "current_file": "", "file_index": 0, "total_files": 0, "chunks_so_far": 0,
@@ -389,6 +396,8 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
     })
 
     def _on_progress(current_file: str, file_index: int, total_files: int, chunks_so_far: int) -> None:
+        if _cancel_requested:
+            raise _IndexingCancelled()
         _index_status.update({
             "current_file": current_file, "file_index": file_index,
             "total_files": total_files, "chunks_so_far": chunks_so_far,
@@ -410,6 +419,8 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
         _index_status["phase"] = "embedding"
 
         def _on_embed_progress(batch_idx: int, total_batches: int) -> None:
+            if _cancel_requested:
+                raise _IndexingCancelled()
             _index_status.update({"embed_batch": batch_idx, "embed_total_batches": total_batches})
 
         # build_vector_store is async but calls blocking SentenceTransformer.encode().
@@ -440,7 +451,11 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
         await loop.run_in_executor(None, _sync_build_vs)
         n_files = len(Counter(c.metadata.get("source_file", "?") for c in chunks))
         return len(chunks), n_files
+    except _IndexingCancelled:
+        log.info("Indexing cancelled by user request.")
+        return 0, 0
     finally:
+        _cancel_requested = False
         from datetime import datetime, timezone
         _index_status["indexing"] = False
         _index_status["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -528,6 +543,7 @@ def build_server():
                     "query_expansion": cfg.query_expansion,
                     "llm_backend": cfg.llm_backend,
                     "llm_model": cfg.llm_model,
+                    "llm_temperature": cfg.llm_temperature,
                     "utility_llm_model": cfg.utility_llm_model or None,
                     "embedding_backend": kb.embedding_backend,
                     "embedding_model": kb.embedding_model,
@@ -615,6 +631,10 @@ def build_server():
         agent_proxy.switch(new_agent)
         log.info(f"Agent rebuilt with llm={cfg.llm_backend}/{cfg.llm_model}")
 
+    def cancel_indexing() -> None:
+        global _cancel_requested
+        _cancel_requested = True
+
     rag_router = create_rag_router(
         db_dir=_DB_DIR,
         vector_store_factory=lambda: vs_proxy,
@@ -622,6 +642,7 @@ def build_server():
         status_factory=lambda: dict(_index_status),
         query_status_factory=lambda: dict(_query_status),
         agent_rebuild_callback=on_agent_rebuild,
+        cancel_callback=cancel_indexing,
     )
     app.include_router(rag_router)
 

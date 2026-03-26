@@ -14,6 +14,8 @@ export interface Message {
     query_duration_ms?: number;
     tokens_per_second?: number;
     llm_model?: string;
+    kb_name?: string;
+    emb_model?: string;
 }
 
 export interface Source {

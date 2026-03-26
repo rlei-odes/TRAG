@@ -37,14 +37,14 @@ export const SidebarButton: FunctionComponent<Props> = (props: Props) => {
 
     const badges: string[] = [];
     if (ragConfigSnapshot) {
+        if (ragConfigSnapshot.llm_model) badges.push(ragConfigSnapshot.llm_model.split("/").pop()!.split(":")[0]);
+        if (ragConfigSnapshot.llm_temperature != null) badges.push(`T=${ragConfigSnapshot.llm_temperature}`);
+        if (ragConfigSnapshot.embedding_model) badges.push(`emb:${ragConfigSnapshot.embedding_model.split("/").pop()!}`);
         if (ragConfigSnapshot.retriever_top_k !== undefined) badges.push(`k=${ragConfigSnapshot.retriever_top_k}`);
         if (ragConfigSnapshot.bm25_enabled) badges.push("BM25");
         if (ragConfigSnapshot.reranking_enabled) badges.push("Rerank");
         if (ragConfigSnapshot.hyde_enabled) badges.push("HyDE");
         if (ragConfigSnapshot.query_expansion) badges.push(`QExp×${ragConfigSnapshot.query_expansion}`);
-        if (ragConfigSnapshot.llm_model) badges.push(ragConfigSnapshot.llm_model.split("/").pop()!.split(":")[0]);
-        if (ragConfigSnapshot.utility_llm_model) badges.push(`util:${ragConfigSnapshot.utility_llm_model.split("/").pop()!.split(":")[0]}`);
-        if (ragConfigSnapshot.embedding_model) badges.push(`emb:${ragConfigSnapshot.embedding_model.split("/").pop()!}`);
     }
 
     const tooltip = [
@@ -56,6 +56,7 @@ export const SidebarButton: FunctionComponent<Props> = (props: Props) => {
             ragConfigSnapshot.hyde_enabled ? "HyDE" : null,
             ragConfigSnapshot.query_expansion ? `QExp×${ragConfigSnapshot.query_expansion}` : null,
             ragConfigSnapshot.llm_model ? `LLM: ${ragConfigSnapshot.llm_model}` : null,
+            ragConfigSnapshot.llm_temperature != null ? `T=${ragConfigSnapshot.llm_temperature}` : null,
             ragConfigSnapshot.utility_llm_model ? `Util: ${ragConfigSnapshot.utility_llm_model}` : null,
             ragConfigSnapshot.embedding_backend ? `Emb: ${ragConfigSnapshot.embedding_backend}` : null,
             ragConfigSnapshot.embedding_model ? `  → ${ragConfigSnapshot.embedding_model}` : null,

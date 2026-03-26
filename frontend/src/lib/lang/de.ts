@@ -191,5 +191,11 @@ export const app = {
         btnReindex: "Neu indexieren ↺",
         btnAlreadyIndexingTitle: "Indexierung läuft bereits…",
         btnReindexTitle: "Löscht den Vector Store und indexiert alle Dateien neu.\n\nWann verwenden:\n  · Embedding-Modell oder Backend geändert\n  · Doppelte / veraltete Chunks entfernen\n⚠ Dauert länger als inkrementelle Indexierung.",
+        indexingPhaseLoading: "Dateien laden…",
+        indexingPhaseEmbedding: "Embeddings berechnen…",
+        indexingDone: "Indexierung{{kb}} beendet um {{time}}",
+        indexingStopBtn: "Stopp",
+        indexingStopTitle: "Indexierung abbrechen?",
+        indexingStopDesc: "Die laufende Indexierung wird gestoppt. Bereits indexierte Chunks bleiben erhalten.",
     },
 };

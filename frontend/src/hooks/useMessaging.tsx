@@ -86,7 +86,26 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [cursor, setCursor] = useState<Message["id"]>("");
     const [thread, setThread] = useState<Message[]>([]);
-    const [sessionLabel, setSessionLabel] = useState<string>("");
+    const [sessionLabel, setSessionLabelState] = useState<string>(() => {
+        if (typeof window !== "undefined") {
+            return localStorage.getItem("sessionLabel") || "";
+        }
+        return "";
+    });
+
+    const setSessionLabel = (label: string) => {
+        setSessionLabelState(label);
+        if (typeof window !== "undefined") {
+            localStorage.setItem("sessionLabel", label);
+        }
+    };
+
+    const _saveSessionLabelToHistory = (label: string) => {
+        if (!label || typeof window === "undefined") return;
+        const prev: string[] = JSON.parse(localStorage.getItem("sessionLabelHistory") || "[]");
+        const updated = [label, ...prev.filter((l) => l !== label)].slice(0, 10);
+        localStorage.setItem("sessionLabelHistory", JSON.stringify(updated));
+    };
     const abortControllerRef = useRef<AbortController | null>(null);
     const { t } = useTranslation("app");
 
@@ -122,6 +141,7 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
         setConversationId("");
         setCursor("");
         setMessagesAndThread([], "");
+        // session label intentionally kept — user wants to keep labelling the same test session
     };
 
     const changeConversation = (conversationId: string) => {
@@ -130,7 +150,7 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
 
     const _changeConversation = (conversationId: string) => {
         return conversationService.getMessages(conversationId).then((response) => {
-            if (response) {
+            if (response && response.length > 0) {
                 const cur = response[response.length - 1].id;
                 setCursor(cur);
                 setMessagesAndThread(response, cur);
@@ -252,12 +272,14 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
                 // Handle conversation update if a new conversation was created
                 if (!activeConversationId && streamedMessage.conversation_id && !loadedConversation) {
                     loadedConversation = streamedMessage.conversation_id;
+                    _saveSessionLabelToHistory(sessionLabel);
                     setConversationId(streamedMessage.conversation_id);
                     // Add placeholder with user input as title (avoids race condition with done callback)
                     _updateConversation(streamedMessage.conversation_id, {
                         id: streamedMessage.conversation_id,
                         title: content.substring(0, 60),
                         update_timestamp: new Date().getTime(),
+                        session_label: sessionLabel || undefined,
                     });
                 }
             },

@@ -16,9 +16,11 @@ class LocalLLM(LLM):
         base_url: str = "",
         api_key: str = "",
         response_format: dict | None = None,
+        display_name: str = "",
     ):
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
         self.model = model_name
+        self.display_name = display_name or model_name
         self.temperature = temperature
         self.seed = seed
         self.response_format = response_format
@@ -50,7 +52,7 @@ class LocalLLM(LLM):
         usage = completion.usage
         if usage and usage.completion_tokens and duration_s > 0:
             MetadataProvider.add_metadata({
-                "model": completion.model or self.model,
+                "model": self.display_name,
                 "tokens_per_second": round(usage.completion_tokens / duration_s, 1),
             })
 

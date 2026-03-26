@@ -11,6 +11,7 @@ export interface RagConfigSnapshot {
     query_expansion?: number;
     llm_backend?: string;
     llm_model?: string;
+    llm_temperature?: number;
     utility_llm_model?: string;
     embedding_backend?: string;
     embedding_model?: string;

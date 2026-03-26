@@ -191,5 +191,11 @@ export const app = {
         btnReindex: "Re-index ↺",
         btnAlreadyIndexingTitle: "Indexing already running…",
         btnReindexTitle: "Deletes the vector store and re-indexes all files.\n\nWhen to use:\n  · Embedding model or backend changed\n  · Remove duplicate / stale chunks\n⚠ Takes longer than incremental indexing.",
+        indexingPhaseLoading: "Loading files…",
+        indexingPhaseEmbedding: "Computing embeddings…",
+        indexingDone: "Indexing{{kb}} completed at {{time}}",
+        indexingStopBtn: "Stop",
+        indexingStopTitle: "Cancel indexing?",
+        indexingStopDesc: "The running indexing job will be stopped. Already indexed chunks are preserved.",
     },
 };

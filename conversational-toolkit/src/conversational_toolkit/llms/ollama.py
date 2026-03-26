@@ -137,7 +137,7 @@ class OllamaLLM(LLM):
             eval_duration_ns = getattr(last_chunk, "eval_duration", None) or 0
             tps = round(eval_count / (eval_duration_ns / 1e9), 1) if eval_duration_ns else None
             MetadataProvider.add_metadata({
-                "model": last_chunk.model,
+                "model": f"ollama/{last_chunk.model}",
                 "eval_count": eval_count,
                 "eval_duration_ns": eval_duration_ns,
                 "tokens_per_second": tps,

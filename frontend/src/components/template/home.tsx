@@ -11,6 +11,7 @@ import { Sidebar } from "@/components/sections/sidebar/sidebar";
 import { Header } from "@/components/sections/header";
 import { DisclaimerDialog } from "@/components/sections/dialogs/disclaimer-dialog";
 import { RagConfigPanel } from "@/components/sections/rag-config-panel";
+import { BackendStatus } from "@/components/sections/backend-status";
 import { MessageList } from "@/components/sections/message-list";
 import { Settings2 } from "lucide-react";
 
@@ -64,6 +65,7 @@ export default function Home() {
             )}
 
             <DisclaimerDialog />
+            <BackendStatus />
         </main>
     );
 }

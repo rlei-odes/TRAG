@@ -90,6 +90,7 @@ def create_rag_router(
     status_factory: Callable | None = None,       # () -> dict with indexing progress
     query_status_factory: Callable | None = None, # () -> dict with query phase
     agent_rebuild_callback: Callable | None = None,  # (config) -> None, rebuilds agent without reindex
+    cancel_callback: Callable | None = None,      # () -> None, requests indexing cancellation
 ) -> APIRouter:
     """
     Args:
@@ -172,6 +173,13 @@ def create_rag_router(
         result = await rebuild_callback(cfg, req.reset)
         log.info(f"Reindex complete: {result.chunks_indexed} chunks from {result.files_processed} files")
         return result
+
+    @router.post("/reindex-cancel")
+    async def reindex_cancel() -> dict:
+        """Request cancellation of the running indexing job."""
+        if cancel_callback is not None:
+            cancel_callback()
+        return {"ok": True}
 
     @router.get("/reindex-status", response_model=IndexStatus)
     async def reindex_status() -> IndexStatus:

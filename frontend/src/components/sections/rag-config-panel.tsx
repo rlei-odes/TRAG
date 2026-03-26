@@ -187,7 +187,7 @@ const SelectInput: FunctionComponent<{
     <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-muted border border-border text-foreground text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-400 transition-colors max-w-[180px]"
+        className="bg-muted border border-border text-foreground text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-400 transition-colors w-full max-w-[260px]"
     >
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
@@ -491,10 +491,10 @@ export const RagConfigPanel: FunctionComponent = () => {
 
     // Fetch Ollama LLM models when llm_backend=ollama and ollama_host is set
     const fetchOllamaLlmModels = useCallback(async (host: string) => {
-        if (!host) { setOllamaLlmModels([]); return; }
+        const effectiveHost = host || "localhost:11434";
         setOllamaLlmLoading(true);
         try {
-            const r = await fetch(`${API_BASE}/api/v1/rag/ollama-models?host=${encodeURIComponent(host)}`, { credentials: "include" });
+            const r = await fetch(`${API_BASE}/api/v1/rag/ollama-models?host=${encodeURIComponent(effectiveHost)}`, { credentials: "include" });
             if (r.ok) setOllamaLlmModels(await r.json());
             else setOllamaLlmModels([]);
         } catch { setOllamaLlmModels([]); }

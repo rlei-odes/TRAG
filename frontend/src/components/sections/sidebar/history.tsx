@@ -22,8 +22,9 @@ interface Props {
 
 export const History: FunctionComponent<Props> = (props: Props) => {
     const { onClickSettings, onClickHelp, onClickWebhook, onChangeConversation } = props;
-    const { conversations, changeConversation, createNewConversation, activeConversationId, deleteAllConversations } = useMessaging();
+    const { conversations, changeConversation, createNewConversation, activeConversationId, deleteAllConversations, deleteConversation } = useMessaging();
     const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
+    const [pendingGroupIds, setPendingGroupIds] = useState<string[]>([]);
     const { t, i18n } = useTranslation("app");
     const { isMobile } = useMediaQuery();
     const [filter, setFilter] = useState<string>("");
@@ -119,25 +120,35 @@ export const History: FunctionComponent<Props> = (props: Props) => {
                         return (
                             <div key={sessionKey}>
                                 {hasLabel && (
-                                    <button
-                                        onClick={() => toggleGroup("session:" + sessionKey)}
-                                        className="flex items-center gap-1.5 text-xs text-amber-300 hover:text-amber-200 px-4 py-1.5 text-left w-full transition-colors font-medium"
-                                    >
-                                        <Tag className="h-3 w-3 shrink-0" />
-                                        <span className="truncate">{label}</span>
-                                        {collapsedGroups.has("session:" + sessionKey)
-                                            ? <ChevronRight className="h-3 w-3 shrink-0 ml-auto" />
-                                            : <ChevronDown className="h-3 w-3 shrink-0 ml-auto" />
-                                        }
-                                    </button>
+                                    <div className="flex items-center group/session">
+                                        <button
+                                            onClick={() => toggleGroup("session:" + sessionKey)}
+                                            className="flex flex-1 items-center gap-1.5 text-xs text-amber-300 hover:text-amber-200 pl-4 pr-1 py-1.5 text-left transition-colors font-medium"
+                                        >
+                                            <Tag className="h-3 w-3 shrink-0" />
+                                            <span className="truncate">{label}</span>
+                                            {collapsedGroups.has("session:" + sessionKey)
+                                                ? <ChevronRight className="h-3 w-3 shrink-0 ml-auto" />
+                                                : <ChevronDown className="h-3 w-3 shrink-0 ml-auto" />
+                                            }
+                                        </button>
+                                        <button
+                                            onClick={() => setPendingGroupIds(sessionConvs.map((c) => c.id))}
+                                            className="pr-3 py-1.5 opacity-0 group-hover/session:opacity-100 transition-opacity"
+                                            title={`Alle Chats in «${label}» löschen`}
+                                        >
+                                            <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive transition-colors" />
+                                        </button>
+                                    </div>
                                 )}
                                 {!collapsedGroups.has("session:" + sessionKey) && subGroups.map(
                                     ({ date, conversations: dateCons }) =>
                                         dateCons.length !== 0 && (
                                             <div key={date} className={cn("flex flex-col", hasLabel && "ml-2")}>
+                                                <div className="flex items-center group/date">
                                                 <button
                                                     onClick={() => toggleGroup(sessionKey + ":" + date)}
-                                                    className="flex items-center justify-between text-xs text-foreground opacity-50 hover:opacity-80 px-4 py-2 text-left w-full transition-opacity"
+                                                    className="flex flex-1 items-center justify-between text-xs text-foreground opacity-50 hover:opacity-80 pl-4 pr-1 py-2 text-left transition-opacity"
                                                 >
                                                     <span>{date}</span>
                                                     {collapsedGroups.has(sessionKey + ":" + date)
@@ -145,6 +156,14 @@ export const History: FunctionComponent<Props> = (props: Props) => {
                                                         : <ChevronDown className="h-3 w-3 shrink-0" />
                                                     }
                                                 </button>
+                                                <button
+                                                    onClick={() => setPendingGroupIds(dateCons.map((c) => c.id))}
+                                                    className="pr-3 py-2 opacity-0 group-hover/date:opacity-100 transition-opacity"
+                                                    title={`Alle Chats von «${date}» löschen`}
+                                                >
+                                                    <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive transition-colors" />
+                                                </button>
+                                                </div>
                                                 {!collapsedGroups.has(sessionKey + ":" + date) && dateCons.map((conversation) => (
                                                     <SidebarButton
                                                         conversationId={conversation.id}
@@ -209,6 +228,27 @@ export const History: FunctionComponent<Props> = (props: Props) => {
                             <button
                                 className="px-4 py-2 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/80 transition-colors"
                                 onClick={() => { deleteAllConversations(); setIsDeleteAllOpen(false); }}
+                            >{t("confirm")}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {pendingGroupIds.length > 0 && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-background border border-border rounded-lg p-6 mx-4 max-w-sm w-full shadow-xl">
+                        <h3 className="text-base font-semibold text-foreground mb-2">{pendingGroupIds.length} Chats löschen</h3>
+                        <p className="text-sm text-muted-foreground mb-5">Diese {pendingGroupIds.length} Chats werden unwiderruflich gelöscht.</p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                className="px-4 py-2 text-sm rounded-md hover:bg-muted transition-colors"
+                                onClick={() => setPendingGroupIds([])}
+                            >{t("cancel")}</button>
+                            <button
+                                className="px-4 py-2 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/80 transition-colors"
+                                onClick={() => {
+                                    pendingGroupIds.forEach((id) => deleteConversation(id));
+                                    setPendingGroupIds([]);
+                                }}
                             >{t("confirm")}</button>
                         </div>
                     </div>

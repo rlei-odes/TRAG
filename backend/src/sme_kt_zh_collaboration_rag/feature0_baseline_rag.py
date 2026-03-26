@@ -282,6 +282,7 @@ def build_llm(
                 temperature=temperature,
                 seed=SEED,
                 response_format=response_format,
+                display_name=f"litellm/{name}",
             )
         case "custom":
             # OpenAI-compatible custom endpoint (Anthropic, OpenAI, local vLLM, etc.)

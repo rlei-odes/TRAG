@@ -191,5 +191,11 @@ export const app = {
         btnReindex: "Réindexer ↺",
         btnAlreadyIndexingTitle: "Indexation déjà en cours…",
         btnReindexTitle: "Supprime le vector store et réindexe tous les fichiers.\n\nQuand utiliser :\n  · Modèle ou backend d'embedding modifié\n  · Supprimer les chunks en double / obsolètes\n⚠ Prend plus de temps que l'indexation incrémentielle.",
+        indexingPhaseLoading: "Chargement des fichiers…",
+        indexingPhaseEmbedding: "Calcul des embeddings…",
+        indexingDone: "Indexation{{kb}} terminée à {{time}}",
+        indexingStopBtn: "Arrêter",
+        indexingStopTitle: "Annuler l'indexation ?",
+        indexingStopDesc: "L'indexation en cours sera arrêtée. Les chunks déjà indexés sont conservés.",
     },
 };

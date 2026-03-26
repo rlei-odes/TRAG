@@ -20,7 +20,7 @@ interface MessageItemProps extends Message {
 }
 
 export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageItemProps) => {
-    const { id, content, role, sources, className, reaction, isLastMessage, follow_up_questions, parent_id, query_duration_ms, tokens_per_second, llm_model } = props;
+    const { id, content, role, sources, className, reaction, isLastMessage, follow_up_questions, parent_id, query_duration_ms, tokens_per_second, llm_model, kb_name, emb_model } = props;
     const isUser = role === "user";
     const { t } = useTranslation("app");
     const [isHover, setIsHover] = useState(false);
@@ -122,17 +122,17 @@ export const MessageItem: FunctionComponent<MessageItemProps> = (props: MessageI
             </div>
             {!isUser && !isLoading && !isError && query_duration_ms != null && (
                 <div className="pl-9 pb-1 flex items-center gap-2 text-[10px] text-foreground/30 font-mono select-none">
+                    {llm_model && (
+                        <>
+                            <span>{llm_model.replace(/\s+T=[\d.]+/g, "")}</span>
+                            <span className="opacity-40">·</span>
+                        </>
+                    )}
                     <span>{(query_duration_ms / 1000).toFixed(1)}s</span>
                     {tokens_per_second != null && (
                         <>
                             <span className="opacity-40">·</span>
                             <span>{tokens_per_second.toFixed(1)} tok/s</span>
-                        </>
-                    )}
-                    {llm_model && (
-                        <>
-                            <span className="opacity-40">·</span>
-                            <span>{llm_model}</span>
                         </>
                     )}
                 </div>

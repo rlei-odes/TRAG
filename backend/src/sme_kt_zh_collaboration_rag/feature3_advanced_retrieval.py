@@ -3,10 +3,10 @@ Feature Track 3: Retrieval Strategies
 
 Compares three retrieval approaches that go beyond single-query semantic search:
 
-    1. baseline         — single query -> top-k semantic (VectorStoreRetriever)
-    2. bm25             — keyword retrieval (BM25Okapi, no embedding)
-    3. hybrid           — semantic + BM25 fused with RRF (HybridRetriever)
-    4. metadata_filter  — semantic search restricted to a specific subset of documents
+    1. baseline          single query -> top-k semantic (VectorStoreRetriever)
+    2. bm25              keyword retrieval (BM25Okapi, no embedding)
+    3. hybrid            semantic + BM25 fused with RRF (HybridRetriever)
+    4. metadata_filter   semantic search restricted to a specific subset of documents
 
 BM25 catches exact keyword matches (product IDs, certification numbers, acronyms) that semantic search misses. Hybrid combines both signals at no extra LLM cost. Metadata filtering lets callers scope retrieval to a known document when the query is document-specific (e.g. "summarise the tesa EPD").
 """
@@ -16,11 +16,7 @@ from typing import Any, Sequence
 
 import numpy as np
 from loguru import logger
-from conversational_toolkit.embeddings.openai import OpenAIEmbeddings
-
-from conversational_toolkit.embeddings.sentence_transformer import (
-    SentenceTransformerEmbeddings,
-)
+from conversational_toolkit.embeddings.base import EmbeddingsModel
 from conversational_toolkit.retriever.bm25_retriever import BM25Retriever
 from conversational_toolkit.retriever.hybrid_retriever import HybridRetriever
 from conversational_toolkit.retriever.vectorstore_retriever import VectorStoreRetriever
@@ -54,7 +50,7 @@ class RetrievalResult:
 
 async def retrieve_baseline(
     query: str,
-    embedding_model: SentenceTransformerEmbeddings,
+    embedding_model: EmbeddingsModel,
     vector_store: ChromaDBVectorStore,
     top_k: int = 5,
 ) -> RetrievalResult:
@@ -77,7 +73,7 @@ async def retrieve_bm25(
 
 async def retrieve_hybrid(
     query: str,
-    embedding_model: SentenceTransformerEmbeddings,
+    embedding_model: EmbeddingsModel,
     vector_store: ChromaDBVectorStore,
     corpus: list[ChunkRecord],
     top_k: int = 5,
@@ -93,7 +89,7 @@ async def retrieve_hybrid(
 
 async def retrieve_with_metadata_filter(
     query: str,
-    embedding_model: SentenceTransformerEmbeddings,
+    embedding_model: EmbeddingsModel,
     vector_store: ChromaDBVectorStore,
     filters: dict[str, Any],
     top_k: int = 5,
@@ -119,7 +115,7 @@ async def retrieve_with_metadata_filter(
 
 async def compare_retrieval_strategies(
     query: str,
-    embedding_model: SentenceTransformerEmbeddings,
+    embedding_model: EmbeddingsModel,
     vector_store: ChromaDBVectorStore,
     corpus: list[ChunkRecord],
     top_k: int = 5,
@@ -173,7 +169,7 @@ def print_strategy_comparison(
 
 async def get_corpus_from_vector_store(
     vector_store: ChromaDBVectorStore,
-    embedding_model: SentenceTransformerEmbeddings | OpenAIEmbeddings,
+    embedding_model: EmbeddingsModel,
     n: int,
 ) -> list[ChunkRecord]:
     """Fetch a representative corpus from the vector store for BM25 indexing.

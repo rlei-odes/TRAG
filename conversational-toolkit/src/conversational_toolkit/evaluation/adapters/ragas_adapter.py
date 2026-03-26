@@ -33,9 +33,9 @@ def _to_ragas_messages(sample: EvaluationSample) -> list[Any]:
     messages: list[Any] = []
     for msg in sample.history:
         if msg.role == Roles.USER:
-            messages.append(RagasHumanMessage(content=msg.content))
+            messages.append(RagasHumanMessage(content=msg.content[0].text or "" if msg.content else ""))
         elif msg.role == Roles.ASSISTANT:
-            messages.append(RagasAIMessage(content=msg.content))
+            messages.append(RagasAIMessage(content=msg.content[0].text or "" if msg.content else ""))
         # SYSTEM and TOOL messages are intentionally skipped
     messages.append(RagasHumanMessage(content=sample.query))
     if sample.answer:

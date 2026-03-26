@@ -52,7 +52,7 @@ class PDFChunker(Chunker):
                 doc_filename = Path(file_path).stem
                 picture_counter = 0
                 for element, _level in conv_result.document.iterate_items():
-                    if isinstance(element, PictureItem) and element.image:
+                    if isinstance(element, PictureItem) and element.image and element.image.pil_image:
                         picture_counter += 1
                         image_filename = Path(image_path) / f"{doc_filename}-picture-{picture_counter}.png"
                         with open(image_filename, "wb") as fp:
@@ -76,7 +76,7 @@ class PDFChunker(Chunker):
         write_images: bool = True,
         image_path: str | None = "./tmp",
     ) -> list[Chunk]:
-        if not os.path.exists(image_path):
+        if image_path is not None and not os.path.exists(image_path):
             os.makedirs(image_path)
         markdown = self._pdf2markdown(file_path, engine, write_images=write_images, image_path=image_path)
         header_pattern = re.compile(r"^(#{1,6}\s.*)$", re.MULTILINE)

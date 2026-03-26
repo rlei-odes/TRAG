@@ -16,8 +16,6 @@ class VectorStoreRetriever(Retriever[ChunkMatch]):
 
 
 class CompositeVectorStoreRetriever(Retriever[ChunkMatch]):
-    # TODO: Should allow in main class to have list as well for top_k
-
     def __init__(
         self,
         embedding_models: list[EmbeddingsModel],

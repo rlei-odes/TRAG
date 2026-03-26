@@ -2,14 +2,15 @@
 Feature Track 1: Document Ingestion & Chunking
 
 Explores and compares three chunking strategies:
-    1. header_based     — PDFChunker splits on Markdown headings (one chunk per section)
-    2. fixed_size       — Fixed character window with overlap (predictable sizes)
-    3. paragraph_aware  — Merge paragraphs until a target size is reached
+    1. header_based: PDFChunker splits on Markdown headings (one chunk per section)
+    2. fixed_size: Fixed character window with overlap (predictable sizes)
+    3. paragraph_aware: Merge paragraphs until a target size is reached
 
 The embedding model (all-MiniLM-L6-v2) has a 256-token limit. Chunks that exceed this are silently truncated -> information at the end is lost. Visualising chunk-size distributions before embedding exposes this problem and motivates switching to models with higher token limits (e.g. OpenAI text-embedding-3-small: 8 191 tokens).
 """
 
 from dataclasses import dataclass
+import matplotlib.pyplot as plt  # type: ignore[import-not-found]
 from pathlib import Path
 from typing import Any, Callable
 
@@ -28,14 +29,9 @@ class ChunkStats:
     min_chars: int
     max_chars: int
     median_chars: int
-    over_limit: int  # chunks estimated >256 tokens (embedding model limit)
 
     def __str__(self) -> str:
-        return (
-            f"{self.strategy:<22} chunks={self.total_chunks:>4}, "
-            f"avg={self.avg_chars:>6.0f}, min={self.min_chars:>5}, "
-            f"max={self.max_chars:>6}, >256tok={self.over_limit:>4}"
-        )
+        return f"strategy={self.strategy}, chunks={self.total_chunks}, avg={round(self.avg_chars, 3)}, min={self.min_chars}, max={self.max_chars}"
 
 
 def estimate_tokens(text: str) -> int:
@@ -46,10 +42,9 @@ def estimate_tokens(text: str) -> int:
 def analyze_chunks(chunks: list[Chunk], strategy_name: str) -> ChunkStats:
     """Compute size statistics for a list of chunks."""
     if not chunks:
-        return ChunkStats(strategy_name, 0, 0.0, 0, 0, 0, 0)
+        return ChunkStats(strategy_name, 0, 0.0, 0, 0, 0)
     lengths = sorted(len(c.content) for c in chunks)
     n = len(lengths)
-    over = sum(1 for c in chunks if estimate_tokens(c.content) > 256)
     return ChunkStats(
         strategy=strategy_name,
         total_chunks=n,
@@ -57,30 +52,21 @@ def analyze_chunks(chunks: list[Chunk], strategy_name: str) -> ChunkStats:
         min_chars=lengths[0],
         max_chars=lengths[-1],
         median_chars=lengths[n // 2],
-        over_limit=over,
     )
 
 
-def char_histogram(chunks: list[Chunk], bins: int = 10, width: int = 40) -> str:
-    """Return a simple ASCII histogram of chunk character lengths."""
+def char_histogram(
+    chunks: list[Chunk], bins: int = 10, title: str = "Chunk character lengths"
+):
+    """Return a matplotlib histogram of chunk character lengths."""
     lengths = [len(c.content) for c in chunks]
-    if not lengths:
-        return "(no chunks)"
-    lo, hi = min(lengths), max(lengths)
-    if lo == hi:
-        return f"All chunks: {lo} chars"
-    step = (hi - lo) / bins
-    counts = [0] * bins
-    for length in lengths:
-        idx = min(int((length - lo) / step), bins - 1)
-        counts[idx] += 1
-    max_count = max(counts)
-    lines = []
-    for i, c in enumerate(counts):
-        label = f"{lo + i * step:>6.0f}-{lo + (i + 1) * step:<6.0f}"
-        bar = "█" * int(c / max_count * width)
-        lines.append(f"  {label} | {bar} {c}")
-    return "\n".join(lines)
+    fig, ax = plt.subplots()
+    ax.hist(lengths, bins=bins, edgecolor="black")
+    ax.set_xlabel("Characters")
+    ax.set_ylabel("Count")
+    ax.set_title(title)
+    plt.tight_layout()
+    return fig
 
 
 def header_based_chunks(file_path: str) -> list[Chunk]:
@@ -175,7 +161,7 @@ def compare_strategies(file_path: str) -> dict[str, tuple[list[Chunk], ChunkStat
         chunks = fn(file_path, **kwargs)
         stats = analyze_chunks(chunks, name)
         results[name] = (chunks, stats)
-        logger.info(f"  {stats}")
+        logger.info(f"{stats}")
 
     return results
 

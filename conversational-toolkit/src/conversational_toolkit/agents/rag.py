@@ -19,7 +19,6 @@ from conversational_toolkit.vectorstores.base import ChunkRecord
 
 import logging
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 
@@ -27,8 +26,8 @@ class RAG(Agent):
     """
     RAG agent that retrieves document chunks before generating an answer.
 
-    # TODO: Currently only outputs text
-    # TODO: Forced to give images as user role
+    # TODO: LLM response is assumed to be text-only; image output from the model is not handled.
+    # TODO: Image sources are injected as USER role messages.
     # TODO: Remove their concept of sources in their format XML
 
     Attributes:

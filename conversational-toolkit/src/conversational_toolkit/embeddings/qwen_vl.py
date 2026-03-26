@@ -1,31 +1,27 @@
-# WARNING: CODE NOT CHECKED!! (ChatGPT mainly coded for a hackathon)
-# TODO: Check the code before any push in project
-
 import io
 import base64
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
 
-from qwen_vl_utils.vision_process import process_vision_info
+from qwen_vl_utils.vision_process import process_vision_info  # type: ignore[import-not-found]
 from transformers.models.qwen3_vl.processing_qwen3_vl import Qwen3VLProcessor
 from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLModel,
-    Qwen3VLConfig,
     Qwen3VLPreTrainedModel,
 )
+from transformers.models.qwen3_vl.configuration_qwen3_vl import Qwen3VLConfig
 
 from dataclasses import dataclass
-from transformers.modeling_outputs import ModelOutput
+from transformers.utils.generic import ModelOutput
 
 from conversational_toolkit.chunking.base import Chunk
 from conversational_toolkit.embeddings.base import EmbeddingsModel
 
 
-# --- Minimal "embedding-only" model head (matches the HF repo script idea) ---
 @dataclass
 class Qwen3VLForEmbeddingOutput(ModelOutput):
     last_hidden_state: Optional[torch.FloatTensor] = None
@@ -33,7 +29,7 @@ class Qwen3VLForEmbeddingOutput(ModelOutput):
 
 
 class Qwen3VLForEmbedding(Qwen3VLPreTrainedModel):
-    _checkpoint_conversion_mapping = {}  # noqa: RUF012
+    _checkpoint_conversion_mapping: dict[str, str] = {}  # noqa: RUF012
     accepts_loss_kwargs = False
     config: Qwen3VLConfig
 
@@ -44,7 +40,7 @@ class Qwen3VLForEmbedding(Qwen3VLPreTrainedModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Any] = None,
@@ -75,7 +71,6 @@ class Qwen3VLForEmbedding(Qwen3VLPreTrainedModel):
         )
 
 
-# --- Embedder wrapper (same algorithm as scripts/qwen3_vl_embedding.py) ---
 class _Qwen3VLEmbedder:
     def __init__(
         self,
@@ -84,9 +79,9 @@ class _Qwen3VLEmbedder:
         instruction: str = "Represent the user's input.",
         max_length: int = 8192,
         normalize: bool = True,
-        output_dim: Optional[int] = None,  # 64..2048 supported by the model (MRL); we slice.
+        output_dim: Optional[int] = None,
         torch_dtype: Optional[torch.dtype] = None,
-        attn_implementation: Optional[str] = None,  # e.g. "flash_attention_2"
+        attn_implementation: Optional[str] = None,
         device: Optional[str] = None,
         min_pixels: int = 4 * (16 * 2) * (16 * 2),
         max_pixels: int = 1800 * (16 * 2) * (16 * 2),
@@ -103,17 +98,17 @@ class _Qwen3VLEmbedder:
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
         self.device = torch.device(device)
 
-        model_kwargs = {}
+        model_kwargs: dict[str, Any] = {}
         if torch_dtype is not None:
             model_kwargs["torch_dtype"] = torch_dtype
         if attn_implementation is not None:
             model_kwargs["attn_implementation"] = attn_implementation
 
-        self.model = Qwen3VLForEmbedding.from_pretrained(
+        self.model = Qwen3VLForEmbedding.from_pretrained(  # type: ignore[assignment]
             model_name_or_path,
             trust_remote_code=trust_remote_code,
             **model_kwargs,
-        ).to(self.device)
+        ).to(self.device)  # type: ignore[union-attr]
         self.model.eval()
 
         self.processor = Qwen3VLProcessor.from_pretrained(model_name_or_path, padding_side="right")
@@ -156,29 +151,31 @@ class _Qwen3VLEmbedder:
         ]
 
     def _preprocess(self, conversations: list[list[dict]]) -> dict[str, torch.Tensor]:
-        text = self.processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
+        processor: Any = self.processor
+        text = processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
 
-        images, videos, video_kwargs = None, None, {"do_sample_frames": False}
-        # Vision parsing (image/video tokens, grids, etc.)
-        images, video_inputs, video_kwargs = process_vision_info(
+        images, video_inputs, raw_video_kwargs = process_vision_info(
             conversations,
             image_patch_size=16,
             return_video_metadata=True,
             return_video_kwargs=True,
         )
+        video_kwargs: dict[str, Any] = raw_video_kwargs or {}
 
+        videos_list: list[Any] | None
+        video_metadata_list: list[Any] | None
         if video_inputs is not None:
-            videos, video_metadata = zip(*video_inputs)
-            videos = list(videos)
-            video_metadata = list(video_metadata)
+            _videos, _video_metadata = zip(*video_inputs)
+            videos_list = list(_videos)
+            video_metadata_list = list(_video_metadata)
         else:
-            videos, video_metadata = None, None
+            videos_list, video_metadata_list = None, None
 
-        inputs = self.processor(
+        inputs = processor(
             text=text,
             images=images,
-            videos=videos,
-            video_metadata=video_metadata,
+            videos=videos_list,
+            video_metadata=video_metadata_list,
             truncation=True,
             max_length=self.max_length,
             padding=True,
@@ -210,7 +207,6 @@ class _Qwen3VLEmbedder:
 
         emb = self._pool_last_token(outputs.last_hidden_state, model_inputs["attention_mask"])
 
-        # Optional Matryoshka slicing (model is trained to support multiple dims)
         od = output_dim if output_dim is not None else self.output_dim
         if od is not None:
             emb = emb[:, :od]
@@ -221,7 +217,33 @@ class _Qwen3VLEmbedder:
         return emb
 
 
-# --- Your CLIP-like facade ---
+def _strip_data_uri(s: str) -> str:
+    """Strip the 'data:<mime>;base64,' prefix from a data URI, returning raw base64."""
+    if s.startswith("data:"):
+        _, _, payload = s.partition(",")
+        return payload
+    return s
+
+
+def _b64decode(s: str) -> bytes:
+    """Decode base64, stripping data URI prefix and adding missing padding."""
+    raw = _strip_data_uri(s)
+    raw += "=" * (-len(raw) % 4)
+    return base64.b64decode(raw)
+
+
+def _sniff_mime_type(s: str) -> str:
+    try:
+        data = _b64decode(s)
+    except Exception:
+        return "text/plain"
+    if data[:4] == b"\x89PNG":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    return "text/plain"
+
+
 class Qwen3VLEmbeddings(EmbeddingsModel):
     # TODO: Update Embedding main class to support images as well, so not inheriting it now.
 
@@ -232,8 +254,8 @@ class Qwen3VLEmbeddings(EmbeddingsModel):
         instruction: str = "Represent the user's input.",
         output_dim: int | None = None,
         normalize: bool = True,
-        torch_dtype: torch.dtype | None = None,  # e.g. torch.float16
-        attn_implementation: str | None = None,  # e.g. "flash_attention_2"
+        torch_dtype: torch.dtype | None = None,
+        attn_implementation: str | None = None,
         device: str | None = None,
     ):
         self.embedder = _Qwen3VLEmbedder(
@@ -259,7 +281,7 @@ class Qwen3VLEmbeddings(EmbeddingsModel):
 
         decoded_images: list[Image.Image] = []
         for img_base64 in images:
-            img_data = base64.b64decode(img_base64)
+            img_data = _b64decode(img_base64)
             img = Image.open(io.BytesIO(img_data)).convert("RGB")
             decoded_images.append(img)
 
@@ -267,21 +289,26 @@ class Qwen3VLEmbeddings(EmbeddingsModel):
         emb = self.embedder.encode(items)
         return emb.detach().cpu().numpy()
 
-    async def get_embeddings(self, chunks: str | Chunk | list[Chunk]) -> np.ndarray:
+    async def get_embeddings(self, chunks: str | list[str] | Chunk | list[Chunk]) -> np.ndarray:  # type: ignore[override]
+        chunk_list: list[Chunk]
         if isinstance(chunks, str):
-            chunks = [Chunk(content=chunks, mime_type="text/plain", title="Query")]
-
-        if isinstance(chunks, Chunk):
-            chunks = [chunks]
+            chunk_list = [Chunk(content=chunks, mime_type="text/plain", title="Query")]
+        elif isinstance(chunks, Chunk):
+            chunk_list = [chunks]
+        elif isinstance(chunks, list) and all(isinstance(c, str) for c in chunks):
+            chunk_list = [
+                Chunk(content=c, mime_type=_sniff_mime_type(c), title=f"Chunk {i}")
+                for i, c in enumerate(cast(list[str], chunks))
+            ]
+        else:
+            chunk_list = chunks  # type: ignore[assignment]
 
         items: list[dict] = []
-        for chunk in chunks:
+        for chunk in chunk_list:
             if chunk.mime_type.startswith("text"):
                 items.append({"text": chunk.content})
             elif chunk.mime_type.startswith("image"):
-                # chunk.content is base64 in your current design
-                img_data = base64.b64decode(chunk.content)
-                img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                img = Image.open(io.BytesIO(_b64decode(chunk.content))).convert("RGB")
                 items.append({"image": img, "text": ""})
             else:
                 raise ValueError(f"Unknown Data Type: {chunk.mime_type}")

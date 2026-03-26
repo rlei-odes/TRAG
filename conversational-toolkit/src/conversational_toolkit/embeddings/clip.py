@@ -41,7 +41,7 @@ class CLIPEmbeddings:
             img = Image.open(io.BytesIO(img_data))
             decoded_images.append(img)
 
-        image_inputs = self.processor(images=decoded_images, return_tensors="pt", padding=True)
+        image_inputs = self.processor(images=decoded_images, return_tensors="pt", padding=True)  # type: ignore[call-arg]
 
         with torch.no_grad():
             image_embeddings = self.clip_model.get_image_features(**image_inputs)

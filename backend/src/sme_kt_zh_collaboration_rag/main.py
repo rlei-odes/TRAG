@@ -2,8 +2,10 @@ import os
 import pathlib
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import uvicorn
+from loguru import logger
 
 from conversational_toolkit.agents.base import AgentAnswer
 from conversational_toolkit.agents.rag import RAG
@@ -41,13 +43,16 @@ from sme_kt_zh_collaboration_rag.feature0_baseline_rag import (
 )
 from sme_kt_zh_collaboration_rag.utils.json import parse_llm_json_stream
 
+logger.add(Path(__file__).parents[4] / "logs" / "api.log", rotation="50 MB")
+
 BACKEND = os.getenv("BACKEND", "openai")
 _secret = pathlib.Path("/secrets/OPENAI_API_KEY")
 if "OPENAI_API_KEY" not in os.environ and _secret.exists():
     os.environ["OPENAI_API_KEY"] = _secret.read_text().strip()
 
-_DB_DIR = Path(__file__).parent / "db"
-_DB_DIR.mkdir(exist_ok=True)
+_ROOT = Path(__file__).parents[3]
+_DB_DIR = Path(os.getenv("DB_DIR", str(_ROOT / "backend" / "db")))
+_DB_DIR.mkdir(parents=True, exist_ok=True)
 
 IMAGE_VS_PATH = _DB_DIR / "vs_image"
 TEXT_VS_PATH = _DB_DIR / "vs_text"
@@ -63,9 +68,9 @@ SYSTEM_PROMPT = dedent("""
        If it does NOT appear, respond: "The sources do not contain information about
        [entity]. I cannot answer this question." Do not substitute other products.
     3. Distinguish clearly between:
-       VERIFIED — backed by a third-party EPD or independent audit
-       CLAIMED  — supplier self-declaration, not independently verified
-       MISSING  — not found in sources
+       VERIFIED: backed by a third-party EPD or independent audit
+       CLAIMED: supplier self-declaration, not independently verified
+       MISSING: not found in sources
     4. Label forward-looking targets (e.g. "carbon neutral by 2025") as targets,
        not as current verified status.
     5. Always cite the source document for each claim.
@@ -74,20 +79,25 @@ SYSTEM_PROMPT = dedent("""
 
 class CustomRAG(RAG):
     async def _answer_post_processing(self, answer: AgentAnswer) -> AgentAnswer:
-        json_answer = parse_llm_json_stream(
-            answer.content[0].text if answer.content else ""
-        )
+        raw_text = (answer.content[0].text if answer.content else "") or ""
+        json_answer: dict[str, Any] = parse_llm_json_stream(raw_text) or {}
 
-        content = json_answer.get("answer", "")
-        relevant_source_ids = json_answer.get("used_sources_id", [])
-        follow_up_questions = json_answer.get("follow_up_questions", [])
-        unique_sources = list({s.id: s for s in answer.sources}.values())
-        return AgentAnswer(
-            content=[MessageContent(type="text", text=content)],
-            sources=[
-                source for source in unique_sources if source.id in relevant_source_ids
-            ],
-            follow_up_questions=follow_up_questions,
+        content: str = json_answer.get("answer", "")
+        relevant_source_ids: list[str] = json_answer.get("used_sources_id", [])
+        follow_up_questions: list[str] = json_answer.get("follow_up_questions", [])
+        unique_sources = list(
+            {getattr(s, "id", None): s for s in answer.sources}.values()
+        )
+        return answer.model_copy(
+            update={
+                "content": [MessageContent(type="text", text=content)],
+                "sources": [
+                    source
+                    for source in unique_sources
+                    if getattr(source, "id", None) in relevant_source_ids
+                ],
+                "follow_up_questions": follow_up_questions,
+            }
         )
 
 

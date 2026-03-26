@@ -2,7 +2,7 @@ export const app = {
     notFound: "Pagina non trovata",
     messagePlaceholder: "Fai una domanda o digita un messaggio...",
     disclaimer: "{{name}} può commettere errori. Considera di verificare le informazioni importanti.",
-    credits: "© 2024 {{name}} fatto con ❤️ da <1>{{sdsc}}</1>",
+    credits: "© 2026 {{name}} fatto con ❤️ da <1>{{sdsc}}</1>",
     welcome: "Come posso aiutarti?",
     settings: "Impostazioni",
     language: "Lingua",

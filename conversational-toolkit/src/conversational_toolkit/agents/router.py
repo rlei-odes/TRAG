@@ -50,7 +50,7 @@ class Router(Agent):
                 LLMMessage(role=Roles.USER, content=[MessageContent(text=query_with_context.query, type="text")]),
             ]
         )
-        category = json.loads(routing.content[0].text)["category"]
+        category = json.loads(routing.content[0].text or "")["category"]
         return self.agent_mapping[category]
 
     async def answer_stream(self, query_with_context: QueryWithContext) -> AsyncGenerator[AgentAnswer, None]:

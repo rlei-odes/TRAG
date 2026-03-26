@@ -44,7 +44,7 @@ export function middleware(request: NextRequest) {
     }
 
     // Session cookie — for browser users after login
-    const cookie = request.cookies.get("insight_auth");
+    const cookie = request.cookies.get("rag_auth");
     if (cookie?.value === API_KEY) {
         return NextResponse.next();
     }

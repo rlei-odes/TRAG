@@ -14,7 +14,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     const cookieValue = [
-        `insight_auth=${API_KEY}`,
+        `rag_auth=${API_KEY}`,
         "Path=/",
         `Max-Age=${COOKIE_MAX_AGE}`,
         "HttpOnly",

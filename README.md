@@ -61,33 +61,25 @@ TRAG layers a complete production stack on top, without modifying the upstream n
 
 ## Architecture
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                        Next.js Frontend                     │
-│   Chat UI · RAG Config Panel · Session Labels · i18n        │
-│   Auth (session cookie) · Sidebar badges · Source citations │
-└───────────────────────┬────────────────────────────────────┘
-                        │ HTTP (proxy rewrite)
-┌───────────────────────▼────────────────────────────────────┐
-│                     FastAPI Backend                          │
-│  /rag · /kb · /v1/chat/completions (OpenAI-compat)          │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │              KB Registry (hot-swap)                   │  │
-│  │  KB-A: ChromaDB · local embed · BM25+semantic        │  │
-│  │  KB-B: pgvector · LiteLLM embed · semantic only      │  │
-│  │  KB-N: ...                                           │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                             │
-│  Retrieval pipeline: Query → [BM25 | Semantic | HyDE]       │
-│                      → RRF fusion → Reranker → Top-K        │
-└──────────┬──────────────────────────┬──────────────────────┘
-           │                          │
-┌──────────▼──────────┐   ┌──────────▼──────────┐
-│   Vector Store       │   │     LLM Backend      │
-│  ChromaDB / pgvector │   │ Ollama / OpenAI /    │
-│  (per-KB, HNSW ANN)  │   │ Anthropic / LiteLLM  │
-└─────────────────────┘   └─────────────────────┘
+```mermaid
+flowchart TD
+    FE["**Next.js Frontend**\nChat UI · RAG Config Panel · Session Labels · i18n\nAuth (session cookie) · Sidebar badges · Source citations"]
+
+    BE["**FastAPI Backend**\n/rag · /kb · /v1/chat/completions (OpenAI-compat)"]
+
+    KB["**KB Registry** (hot-swap)\nKB-A: ChromaDB · local embed · BM25+semantic\nKB-B: pgvector · LiteLLM embed · semantic only\nKB-N: ..."]
+
+    RP["**Retrieval Pipeline**\nQuery → BM25 | Semantic | HyDE\n→ RRF fusion → Reranker → Top-K"]
+
+    VS["**Vector Store**\nChromaDB / pgvector\n(per-KB, HNSW ANN)"]
+
+    LLM["**LLM Backend**\nOllama · OpenAI\nAnthropic · LiteLLM"]
+
+    FE -->|"HTTP (proxy rewrite)"| BE
+    BE --> KB
+    KB --> RP
+    RP --> VS
+    RP --> LLM
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical deep-dive.

@@ -5,7 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [TRAG v0.2] — 2026-03-26 · Vonlanthen INSIGHT
+## [TRAG v0.2.25] — 2026-03-26 · Vonlanthen INSIGHT
 
 This release represents the full TRAG production stack on top of the SDSC baseline.
 

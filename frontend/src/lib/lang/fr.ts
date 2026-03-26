@@ -7,6 +7,8 @@ export const app = {
     settings: "Paramètres",
     language: "Langue",
     darkMode: "Mode sombre",
+    switchToLight: "Passer en mode clair",
+    switchToDark: "Passer en mode sombre",
     error: "Une erreur s'est produite...",
     newChat: "Nouvelle conversation",
     sources: "Sources",

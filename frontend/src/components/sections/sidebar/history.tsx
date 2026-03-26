@@ -123,7 +123,7 @@ export const History: FunctionComponent<Props> = (props: Props) => {
                                     <div className="flex items-center group/session">
                                         <button
                                             onClick={() => toggleGroup("session:" + sessionKey)}
-                                            className="flex flex-1 items-center gap-1.5 text-xs text-amber-300 hover:text-amber-200 pl-4 pr-1 py-1.5 text-left transition-colors font-medium"
+                                            className="flex flex-1 items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 hover:text-amber-600 dark:hover:text-amber-200 pl-4 pr-1 py-1.5 text-left transition-colors font-medium"
                                         >
                                             <Tag className="h-3 w-3 shrink-0" />
                                             <span className="truncate">{label}</span>

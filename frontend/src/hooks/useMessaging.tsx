@@ -317,6 +317,7 @@ export const MessagingProvider: React.FC<Props> = ({ children }) => {
     const stopSending = () => {
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
+        setSending(false);
     };
 
     const renameConversation = (conversationId: Conversation["id"], conversationName: string) => {

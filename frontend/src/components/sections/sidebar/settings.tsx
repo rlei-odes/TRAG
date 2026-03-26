@@ -1,10 +1,9 @@
 import React, { FunctionComponent } from "react";
 import { useTranslation } from "react-i18next";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { DisplayLanguages, Languages } from "@/lib/lang/i18n";
 import { Theme, useTheme } from "@/hooks/useTheme";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sun, Moon } from "lucide-react";
 import { Footer } from "@/components/sections/sidebar/footer";
 import { useDisclaimer } from "@/hooks/useDisclaimer";
 
@@ -48,12 +47,13 @@ export const Settings: FunctionComponent<Props> = (props: Props) => {
                     </div>
                     <div className="flex flex-row align-middle items-center pb-10">
                         <label className="text-sm pr-2">{`${t("darkMode")}:`}</label>
-                        <Switch
-                            checked={isDarkMode}
-                            onClick={() => {
-                                changeTheme(isDarkMode ? Theme.LIGHT : Theme.DARK);
-                            }}
-                        />
+                        <button
+                            onClick={() => changeTheme(isDarkMode ? Theme.LIGHT : Theme.DARK)}
+                            className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                            title={isDarkMode ? t("switchToLight") : t("switchToDark")}
+                        >
+                            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                        </button>
                     </div>
                     <div className="flex flex-row align-middle items-center pb-10">
                         <label className="text-sm pr-2 hover:cursor-pointer underline text-blue-500" onClick={() => setDisclaimerIsOpen(true)}>{`${t(

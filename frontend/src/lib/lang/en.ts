@@ -7,6 +7,8 @@ export const app = {
     settings: "Settings",
     language: "Language",
     darkMode: "Dark mode",
+    switchToLight: "Switch to light mode",
+    switchToDark: "Switch to dark mode",
     error: "Something went wrong...",
     newChat: "New chat",
     sources: "Sources",

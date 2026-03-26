@@ -1,6 +1,6 @@
 # RAG Assistant — Summary
 
-**Version:** 0.2.25 · **Date:** 2026-03-26
+**Version:** 0.2.25 · **Date:** 2026-03-26 · **Public repo:** [voninsight/TRAG](https://github.com/voninsight/TRAG)
 
 ---
 
@@ -104,9 +104,8 @@ Browser
 
 ## GitHub Contribution
 
-**Repository:** [SwissDataScienceCenter/sme-kt-zh-collaboration-rag](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag)
-**Fork:** [voninsight/sme-kt-zh-collaboration-rag](https://github.com/voninsight/sme-kt-zh-collaboration-rag)
-**Branch:** `feature/multi-kb-hybrid-rag`
+**TRAG (public):** [voninsight/TRAG](https://github.com/voninsight/TRAG) · Branch: `feature/multi-kb-hybrid-rag` / `main`
+**Upstream:** [SwissDataScienceCenter/sme-kt-zh-collaboration-rag](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag)
 
 ### How to contribute / open a PR
 

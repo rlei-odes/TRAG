@@ -326,18 +326,8 @@ def build_llm(
 def _split_chunk_by_tokens(chunk: Chunk, max_tokens: int) -> list[Chunk]:
     """Split a chunk whose content exceeds max_tokens into smaller sub-chunks.
 
-<<<<<<< HEAD
     Uses a simple character-based token estimate (4 chars ≈ 1 token).
     Splits at paragraph boundaries where possible, otherwise at word boundaries.
-=======
-    Supported formats:
-        .pdf: converted to Markdown via pymupdf4llm, split on headings
-        .xlsx, .xls: one chunk per sheet (Markdown table)
-
-    Unsupported formats (e.g. standalone images) are logged as warnings and skipped. Images embedded inside PDFs are not extracted as text by default!
-
-    Pass 'max_files' to cap the total number of files processed. Useful for quick iteration during development before scaling to all files.
->>>>>>> upstream/main
     """
     max_chars = max_tokens * 4
     text = chunk.content
@@ -537,14 +527,9 @@ async def build_vector_store(
         if use_nomic_prefix:
             texts = [f"search_document: {c.content}" for c in batch]
         else:
-<<<<<<< HEAD
             texts = [c.content for c in batch]
 
         embeddings = await embedding_model.get_embeddings(texts)
-=======
-            # Multimodal embedding models (e.g. CLIPEmbeddings, Qwen3VLEmbeddings) accept list[Chunk] even though EmbeddingsModel.get_embeddings only declares str | list[str].
-            embeddings = await embedding_model.get_embeddings(batch)  # type: ignore[arg-type]
->>>>>>> upstream/main
 
         await vector_store.insert_chunks(chunks=batch, embedding=embeddings)
         batch_idx = i // batch_size + 1

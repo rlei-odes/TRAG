@@ -97,7 +97,6 @@ from sme_kt_zh_collaboration_rag.openai_compat_router import create_openai_compa
 from sme_kt_zh_collaboration_rag.rag_router import RagConfig, ReindexResult, create_rag_router
 from sme_kt_zh_collaboration_rag.utils.json import parse_llm_json_stream
 
-<<<<<<< HEAD
 log = logging.getLogger("uvicorn")
 
 # ---------------------------------------------------------------------------
@@ -124,18 +123,6 @@ for _secret_name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LITELLM_API_KEY"):
 # ---------------------------------------------------------------------------
 _DB_DIR = Path(__file__).parent / "db"
 _DB_DIR.mkdir(exist_ok=True)
-=======
-logger.add(Path(__file__).parents[4] / "logs" / "api.log", rotation="50 MB")
-
-BACKEND = os.getenv("BACKEND", "openai")
-_secret = pathlib.Path("/secrets/OPENAI_API_KEY")
-if "OPENAI_API_KEY" not in os.environ and _secret.exists():
-    os.environ["OPENAI_API_KEY"] = _secret.read_text().strip()
-
-_ROOT = Path(__file__).parents[3]
-_DB_DIR = Path(os.getenv("DB_DIR", str(_ROOT / "backend" / "db")))
-_DB_DIR.mkdir(parents=True, exist_ok=True)
->>>>>>> upstream/main
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -144,7 +131,6 @@ SYSTEM_PROMPT = dedent("""
     Du bist ein Dokumentenanalyse-Assistent.
     Deine Aufgabe: präzise, nützliche Antworten auf Basis der bereitgestellten Quellen.
 
-<<<<<<< HEAD
     VORGEHEN:
     1. Identifiziere den DOKUMENTTYP jeder Quelle: Ist es ein Angebot, ein Referenzdokument,
        eine Spezifikation, ein Begleitbrief, ein Vertrag?
@@ -173,47 +159,6 @@ SYSTEM_PROMPT = dedent("""
 # ---------------------------------------------------------------------------
 # JSON schema for structured LLM output
 # ---------------------------------------------------------------------------
-=======
-    RULES (apply in order):
-    1. Identify the key entity in the question (product name, supplier, product ID).
-    2. Check that this exact entity appears in the retrieved sources.
-       If it does NOT appear, respond: "The sources do not contain information about
-       [entity]. I cannot answer this question." Do not substitute other products.
-    3. Distinguish clearly between:
-       VERIFIED: backed by a third-party EPD or independent audit
-       CLAIMED: supplier self-declaration, not independently verified
-       MISSING: not found in sources
-    4. Label forward-looking targets (e.g. "carbon neutral by 2025") as targets,
-       not as current verified status.
-    5. Always cite the source document for each claim.
-""").strip()
-
-
-class CustomRAG(RAG):
-    async def _answer_post_processing(self, answer: AgentAnswer) -> AgentAnswer:
-        raw_text = (answer.content[0].text if answer.content else "") or ""
-        json_answer: dict[str, Any] = parse_llm_json_stream(raw_text) or {}
-
-        content: str = json_answer.get("answer", "")
-        relevant_source_ids: list[str] = json_answer.get("used_sources_id", [])
-        follow_up_questions: list[str] = json_answer.get("follow_up_questions", [])
-        unique_sources = list(
-            {getattr(s, "id", None): s for s in answer.sources}.values()
-        )
-        return answer.model_copy(
-            update={
-                "content": [MessageContent(type="text", text=content)],
-                "sources": [
-                    source
-                    for source in unique_sources
-                    if getattr(source, "id", None) in relevant_source_ids
-                ],
-                "follow_up_questions": follow_up_questions,
-            }
-        )
-
-
->>>>>>> upstream/main
 json_schema = {
     "type": "object",
     "name": "AnswerSchema",

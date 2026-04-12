@@ -1,6 +1,6 @@
 # RAG Assistant — Summary
 
-**Version:** 0.2.25 · **Date:** 2026-03-26 · **Public repo:** [voninsight/TRAG](https://github.com/voninsight/TRAG)
+**Version:** 0.2.26 · **Date:** 2026-04-12 · **Maintained by:** rlei-odes
 
 ---
 
@@ -87,84 +87,23 @@ Browser
 
 ---
 
-## Active Demo Configuration (2026-03-26)
+## Vector Store Options
 
-| KB | Description | Chunks | Vector DB |
-|---|---|---|---|
-| `dd1-chroma-p3` ✓ **active** | Demo Data 1 · ChromaDB · Advanced | 1431 | Local ChromaDB |
-| `dd1-pgvector-p1` | Demo Data 1 · pgvector · Dense | 3993 | pgvector LAN |
-| `dd1-pgvector-p2` | Demo Data 1 · pgvector · Hybrid | 0 | pgvector LAN |
-| `dd2-chroma-p1` | Demo Data 2 (NAS) · ChromaDB · Dense | 852 | Local ChromaDB |
-| `dd2-chroma-p2` | Demo Data 2 (NAS) · ChromaDB · Hybrid | 0 | Local ChromaDB |
-| `dd2-pgvector-p3` | Demo Data 2 (NAS) · pgvector · Advanced | 0 | pgvector LAN |
+Each KB selects its own vector store backend independently:
 
-**Note:** `dd1-chroma-p3` is the recommended demo KB — no pgvector LAN dependency.
+| Backend | When to use |
+|---|---|
+| **ChromaDB** (default) | Local, no dependencies, works out of the box |
+| **pgvector** | PostgreSQL available — supports LAN/remote instances, better suited for larger scale or shared infrastructure |
+
+pgvector can point to a PostgreSQL instance anywhere on the network (e.g. a NAS, a dedicated DB server, or a remote host) by configuring the connection string per KB. ChromaDB requires no server — data lives in a local directory.
 
 ---
 
-## GitHub Contribution
+## Contributing
 
-**TRAG (public):** [voninsight/TRAG](https://github.com/voninsight/TRAG) · Branch: `feature/multi-kb-hybrid-rag` / `main`
-**Upstream:** [SwissDataScienceCenter/sme-kt-zh-collaboration-rag](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag)
-
-### How to contribute / open a PR
-
-1. Fork the upstream repository on GitHub
-2. Clone your fork locally
-3. Create a feature branch based on `upstream/main`
-4. Implement and test your changes
-5. Push to your fork and open a Pull Request against `SwissDataScienceCenter/sme-kt-zh-collaboration-rag` → `main`
-
-### What this PR contributes
-
-All extensions were developed by **Vonlanthen INSIGHT** (Patrik Vonlanthen) and are documented in [CONTRIBUTORS.md](CONTRIBUTORS.md):
-
-| Area | Contribution |
-|---|---|
-| Backend | Multi-KB architecture, KB registry, hot-swap without restart |
-| Backend | pgvector alongside ChromaDB — per-KB vector store selector |
-| Backend | Hybrid retrieval: BM25 + semantic via RRF |
-| Backend | Query expansion, HyDE, LLM reranking |
-| Backend | Async refactoring: non-blocking embeddings, ChromaDB, BM25 |
-| Backend | Critical bug fix: stream sentinel in `controller.py` |
-| Backend | MarkItDown chunker: EPUB, DOCX, DOC support |
-| Backend | OpenAI-compatible endpoint (`/v1/chat/completions`) |
-| Backend | Indexing cancellation (`reindex-cancel` endpoint, stop button) |
-| Frontend | RAG config panel: collapsible right-side panel with presets |
-| Frontend | Activity rail + multi-panel layout (knowledge, workflows, tools, …) |
-| Frontend | Login / passcode authentication |
-| Frontend | Conversation grouping by date and session label |
-| Frontend | Session label pills (localStorage, per-device history) |
-| Frontend | Per-group conversation delete (session tag + date groups) |
-| Frontend | Sidebar badges: KB · LLM · T= · emb: · k= · BM25 · Rerank · HyDE · QExp |
-| Frontend | Message footer: LLM · duration · tok/s |
-| Frontend | Backend status banner (red/green, bottom-left) |
-| Frontend | Generation statistics (duration, tokens/s, model) |
-| Frontend | Full i18n: DE / FR / IT translations for all new UI |
-
-### Before submitting the PR
-
-```bash
-cd insight-contrib
-
-# 1. Verify no private content
-grep -r "vonlanthen\|secusuisse\|l\.one\.i234\|192\.168\." frontend/src backend/ -i
-
-# 2. Build check
-cd frontend && npm run build
-
-# 3. Commit
-cd ..
-git add -A
-git commit -m "feat: multi-KB hybrid RAG, usability extensions, i18n, auth"
-
-# 4. Push to fork
-git push origin feature/multi-kb-hybrid-rag
-
-# 5. Open PR on GitHub:
-#    Base: SwissDataScienceCenter/sme-kt-zh-collaboration-rag → main
-#    Head: voninsight/sme-kt-zh-collaboration-rag → feature/multi-kb-hybrid-rag
-```
+See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the full contribution history.
+Upstream: [SwissDataScienceCenter/sme-kt-zh-collaboration-rag](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag)
 
 ---
 

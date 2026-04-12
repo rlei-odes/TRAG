@@ -168,3 +168,14 @@ class PGVectorStore(VectorStore):
                 )
                 for row in result
             ]
+
+    async def get_source_files(self) -> list[str]:
+        """Return a sorted list of unique source file names via a DISTINCT SQL query."""
+        await self._ensure_initialized()
+        async with self.SessionLocal() as session:
+            result = await session.execute(
+                select(self.table.c.chunk_metadata["source_file"].astext)
+                .distinct()
+                .where(self.table.c.chunk_metadata["source_file"].astext.isnot(None))
+            )
+            return sorted({row[0] for row in result if row[0]})

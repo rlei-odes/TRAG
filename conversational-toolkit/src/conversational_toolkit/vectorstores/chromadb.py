@@ -127,6 +127,19 @@ class ChromaDBVectorStore(VectorStore):
         """Return the total number of chunks in the collection."""
         return self.collection.count()
 
+    async def get_source_files(self) -> list[str]:
+        """Return a sorted list of unique source file names (metadata-only fetch, no embeddings)."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, lambda: self.collection.get(include=["metadatas"])
+        )
+        return sorted({
+            m.get("source_file", "")
+            for m in (result.get("metadatas") or [])
+            if m and m.get("source_file")
+        })
+
     async def get_chunks_by_ids(self, chunk_ids: int | list[int]) -> list[Chunk]:
         """
         Retrieve chunks by their IDs.

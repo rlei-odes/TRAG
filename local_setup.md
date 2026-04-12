@@ -3,8 +3,10 @@
 ## Prerequisites
 
 **1. Install Node.js** (needed for the frontend):
+
+nvm (Node Version Manager) installs Node.js entirely inside your home directory — no `sudo`, no system packages touched, trivially uninstalled. The Ubuntu repos ship an outdated Node version; nvm gives you a current one.
+
 ```bash
-# via nvm (recommended — no sudo needed)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 source ~/.bashrc   # or ~/.zshrc
 nvm install 22
@@ -32,15 +34,17 @@ cd /home/roger/Documents/DEV/voninsight-TRAG
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -e conversational-toolkit
-pip install -e backend
+pip install -r requirements.txt
 
 # Put some documents to index
 mkdir -p data   # drop PDFs / DOCX / MD files here
 
-# Start the backend
+# Start the backend (default model: mistral-nemo:12b)
 BACKEND=ollama python -m sme_kt_zh_collaboration_rag.main
 # → runs on http://localhost:8080
+
+# Or use the lighter gemma3:4b model (~4 GB, faster startup):
+# BACKEND=ollama LLM_MODEL=gemma3:4b python -m sme_kt_zh_collaboration_rag.main
 ```
 
 ---
@@ -80,7 +84,7 @@ Open http://localhost:3000, enter the password, and you're in.
 - **SentenceTransformer** downloads `nomic-ai/nomic-embed-text-v1` (~300 MB) on first run — needs internet once, then fully offline
 - **Ollama** downloads the model on first `ollama pull` — also needs internet once
 - With 32 GB RAM and `mistral-nemo:12b`, expect **2–5 tokens/sec** — usable, just not instant
-- For faster responses at the cost of some quality: `ollama pull gemma3:4b` and change the model in the RAG Config panel in the UI
+- For faster responses at the cost of some quality: `ollama pull gemma3:4b` and start with `LLM_MODEL=gemma3:4b` (see backend command above), or switch it in the RAG Config panel in the UI after startup
 
 ---
 

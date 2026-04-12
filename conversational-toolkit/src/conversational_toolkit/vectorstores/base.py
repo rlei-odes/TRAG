@@ -64,3 +64,8 @@ class VectorStore(ABC):
     async def count(self) -> int:
         """Return the total number of chunks stored."""
         pass
+
+    @abstractmethod
+    async def get_source_files(self) -> list[str]:
+        """Return a sorted list of unique source file names stored in this vector store."""
+        pass

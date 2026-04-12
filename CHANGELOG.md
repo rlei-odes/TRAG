@@ -5,6 +5,36 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.26] — 2026-04-12 · rlei-odes
+
+### Fixed — Merge Conflict Resolution
+Resolved leftover upstream merge conflict markers across four files, keeping the fork's HEAD version in each case:
+- `conversational-toolkit/src/conversational_toolkit/chunking/pdf_chunker.py` — guard `write_images` flag before creating image output directory
+- `conversational-toolkit/src/conversational_toolkit/llms/local_llm.py` — lazy `MessageContent` import; use `raw_content` variable consistently
+- `conversational-toolkit/src/conversational_toolkit/conversation_database/controller.py` — retain keepalive SSE streaming logic (`asyncio.wait` + timeout sentinel)
+- `backend/src/sme_kt_zh_collaboration_rag/utils/json.py` — retain pre-compiled `_CODE_FENCE_RE` regex and fork's JSON parse logic
+
+### Fixed — Dependencies
+- `requirements.txt`: added `einops` (required by `nomic-ai/nomic-embed-text-v1` via SentenceTransformers)
+
+### Fixed — VectorStore Abstraction
+- Added `get_source_files()` abstract method to `VectorStore` base class
+- Implemented in `ChromaDBVectorStore` (metadata-only fetch via `run_in_executor`) and `PGVectorStore` (async `DISTINCT` SQL query)
+- Removed two `isinstance(vs, ChromaDBVectorStore)` checks from `main.py` that bypassed the abstraction and left pgvector without a file list
+- Extracted `_inject_source_files()` async helper — called from `rebuild_callback` and `_startup` so both backends get the indexed file list injected into the agent system prompt
+- Removed `ChromaDBVectorStore` import from `main.py` — no longer needed
+
+### Added — Prompt File Management
+- System prompt extracted from hardcoded Python string into `prompts/system_prompt.default.md` — committed, ships as the baseline
+- `prompts/system_prompt.custom.md` — gitignored; written automatically when user saves a custom prompt via the UI, never pushed to the repo
+- Load priority: custom file → default file; clearing the prompt in the UI deletes the custom file and resets to default
+- `rag_config.json` no longer stores `system_prompt` — prompt lives exclusively in the file system
+
+### Fixed — Repository Hygiene
+- `.gitignore`: added `.venv/` entry (was listed as `venv/` only, causing IDE source control noise on fresh installs)
+
+---
+
 ## [TRAG v0.2.25] — 2026-03-26 · Vonlanthen INSIGHT
 
 This release represents the full TRAG production stack on top of the SDSC baseline.

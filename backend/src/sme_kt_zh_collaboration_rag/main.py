@@ -80,7 +80,6 @@ from conversational_toolkit.retriever.bm25_retriever import BM25Retriever
 from conversational_toolkit.retriever.hybrid_retriever import HybridRetriever
 from conversational_toolkit.retriever.reranking_retriever import RerankingRetriever
 from conversational_toolkit.vectorstores.base import VectorStore
-from conversational_toolkit.vectorstores.chromadb import ChromaDBVectorStore
 
 from sme_kt_zh_collaboration_rag.feature0_baseline_rag import (
     _ROOT,
@@ -124,37 +123,24 @@ for _secret_name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LITELLM_API_KEY"):
 _DB_DIR = Path(__file__).parent / "db"
 _DB_DIR.mkdir(exist_ok=True)
 
+_PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts"
+_PROMPTS_DIR.mkdir(exist_ok=True)
+
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = dedent("""
-    Du bist ein Dokumentenanalyse-Assistent.
-    Deine Aufgabe: präzise, nützliche Antworten auf Basis der bereitgestellten Quellen.
 
-    VORGEHEN:
-    1. Identifiziere den DOKUMENTTYP jeder Quelle: Ist es ein Angebot, ein Referenzdokument,
-       eine Spezifikation, ein Begleitbrief, ein Vertrag?
-    2. Beantworte nur auf Basis des AKTUELLEN PROJEKTS — Referenzdokumente (z.B. frühere
-       Projekte, Referenzobjekte) dürfen NUR zitiert werden, wenn sie direkt relevant sind.
-       Verwechsle NICHT Eigenschaften früherer Projekte mit Risiken/Merkmalen des aktuellen.
-    3. Kennzeichne jede Aussage:
-       📄 BELEGT    — direkt aus Dokument (mit Quellenangabe)
-       💡 ABGELEITET — fachlich gefolgert, klar als Einschätzung markiert
-       ❓ FEHLEND   — in keiner Quelle vorhanden
-    4. Wenn die Quellen keine direkten Antworten enthalten: Sag das klar, gib aber eine
-       fachkundige Einschätzung basierend auf dem Dokumentkontext (nicht erfinden).
-    5. Formuliere 2–3 sinnvolle Folgefragen.
-
-    QUALITÄTSZIEL: Präzise, korrekt, nie Referenzprojektdaten als aktuelle Projektfakten
-    ausgeben. Lieber weniger Punkte, dafür korrekt belegt.
-
-    AUSGABEFORMAT — ausschliesslich dieses JSON-Objekt, kein Text davor oder danach:
-    {
-      "answer": "<Antwort im Markdown-Format. Quellenangaben NUR als Dateiname aus dem file='-Attribut des <source>-Tags, z.B. (Angebot.pdf). KEINE UUIDs, KEINE id='-Werte im Text.>",
-      "used_sources_id": ["<exakte Quellen-ID aus dem Kontext>", "..."],
-      "follow_up_questions": ["<Folgefrage1>", "<Folgefrage2>", "<Folgefrage3>"]
-    }
-""").strip()
+def _load_system_prompt() -> str:
+    """Load system prompt from file. Custom overrides default; both live in prompts/.
+    Custom file is gitignored — safe for internal/confidential instructions."""
+    for name in ("system_prompt.custom.md", "system_prompt.default.md"):
+        p = _PROMPTS_DIR / name
+        if p.exists():
+            content = p.read_text().strip()
+            if content:
+                return content
+    # Should never reach here if default file is present, but kept as safety net.
+    return ""
 
 # ---------------------------------------------------------------------------
 # JSON schema for structured LLM output
@@ -335,36 +321,29 @@ def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRA
 
     final_retriever = RerankingRetriever(hybrid, utility_llm, top_k=top_k) if cfg.reranking_enabled else hybrid
 
-    # Inject the list of all indexed files into the system prompt so the model
-    # knows about every file even when none appear in the retrieved chunks.
-    base_prompt = cfg.system_prompt.strip() or SYSTEM_PROMPT
-    try:
-        if isinstance(vs, ChromaDBVectorStore):
-            result = vs.collection.get(include=["metadatas"])
-            indexed_files = sorted({
-                m.get("source_file", "")
-                for m in (result.get("metadatas") or [])
-                if m and m.get("source_file")
-            })
-        else:
-            indexed_files = []  # async fetch not possible here; populated on KB activate
-    except Exception:
-        indexed_files = []
-    if indexed_files:
-        file_list = "\n".join(f"- {f}" for f in indexed_files)
-        effective_prompt = base_prompt + f"\n\nINDEXIERTE DATEIEN ({len(indexed_files)} Dateien):\n{file_list}"
-    else:
-        effective_prompt = base_prompt
+    base_prompt = cfg.system_prompt.strip() or _load_system_prompt()
 
     agent = CustomRAG(
         llm=llm,
         utility_llm=utility_llm,
-        system_prompt=effective_prompt,
+        system_prompt=base_prompt,  # file list injected asynchronously after build
         retrievers=[final_retriever],
         number_query_expansion=cfg.query_expansion,
         enable_hyde=cfg.hyde_enabled,
     )
     return vs, agent
+
+
+async def _inject_source_files(agent: Any, vs: VectorStore, base_prompt: str) -> None:
+    """Append the indexed file list to the agent's system prompt.
+    Called asynchronously after _build_components so the VectorStore abstraction is respected."""
+    try:
+        indexed_files = await vs.get_source_files()
+    except Exception:
+        return
+    if indexed_files:
+        file_list = "\n".join(f"- {f}" for f in indexed_files)
+        agent.system_prompt = base_prompt + f"\n\nINDEXIERTE DATEIEN ({len(indexed_files)} Dateien):\n{file_list}"
 
 
 # ---------------------------------------------------------------------------
@@ -581,19 +560,19 @@ def build_server():
     # ── Startup: auto-ingest active KB if VS is empty ─────────────────────
     async def _startup() -> None:
         vs = object.__getattribute__(vs_proxy, "_obj")
+        agent = object.__getattribute__(agent_proxy, "_obj")
         count = await vs.count()
         if not RESET_VS and count > 0:
             log.info(f"Vector store already populated ({count} chunks) — skipping ingestion.")
             try:
-                if isinstance(vs, ChromaDBVectorStore):
-                    result = vs.collection.get(include=["metadatas"])
-                    n_files = len({m.get("source_file", "?") for m in (result.get("metadatas") or []) if m})
-                else:
-                    records = await vs.get_chunks_by_filter()
-                    n_files = len({r.metadata.get("source_file", "?") for r in records})
+                indexed_files = await vs.get_source_files()
+                n_files = len(indexed_files)
             except Exception:
+                indexed_files = []
                 n_files = 0
             kb_router.update_stats(active_kb.id, count, n_files)
+            base_prompt = session_cfg.system_prompt.strip() or _load_system_prompt()
+            await _inject_source_files(agent, vs, base_prompt)
             return
         msg = "RESET_VS=1 — rebuilding." if RESET_VS else "Vector store empty — starting background ingestion."
         log.info(msg)
@@ -621,6 +600,8 @@ def build_server():
 
         # Rebuild so BM25 re-indexes new content
         new_vs, new_agent = _build_components(kb, cfg)
+        base_prompt = cfg.system_prompt.strip() or _load_system_prompt()
+        await _inject_source_files(new_agent, new_vs, base_prompt)
         vs_proxy.switch(new_vs)
         agent_proxy.switch(new_agent)
 
@@ -639,6 +620,7 @@ def build_server():
 
     rag_router = create_rag_router(
         db_dir=_DB_DIR,
+        prompts_dir=_PROMPTS_DIR,
         vector_store_factory=lambda: vs_proxy,
         rebuild_callback=rebuild_callback,
         status_factory=lambda: dict(_index_status),

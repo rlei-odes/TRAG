@@ -77,11 +77,7 @@ class PDFChunker(Chunker):
         image_path: str | None = "./tmp",
         do_ocr: bool = True,
     ) -> list[Chunk]:
-<<<<<<< HEAD
         if write_images and image_path and not os.path.exists(image_path):
-=======
-        if image_path is not None and not os.path.exists(image_path):
->>>>>>> upstream/main
             os.makedirs(image_path)
         markdown = self._pdf2markdown(file_path, engine, write_images=write_images, image_path=image_path, do_ocr=do_ocr)
         header_pattern = re.compile(r"^(#{1,6}\s.*)$", re.MULTILINE)

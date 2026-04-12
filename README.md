@@ -2,7 +2,8 @@
 
 > A full-stack, production-ready Retrieval-Augmented Generation system.
 > Built on the [SDSC SME-KT-ZH Collaboration RAG](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag) baseline,
-> extended with a complete production stack by [Vonlanthen INSIGHT](https://www.vonlanthen.tv).
+> extended with a complete production stack by [Vonlanthen INSIGHT](https://www.vonlanthen.tv),
+> maintained and further developed by [rlei-odes](https://github.com/rlei-odes).
 
 ---
 
@@ -299,9 +300,10 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 
 **Copyright 2026 Swiss Data Science Center (SDSC), ETH Zürich / EPFL**
 **Copyright 2026 Vonlanthen INSIGHT (https://www.vonlanthen.tv)**
+**Copyright 2026 rlei-odes (https://github.com/rlei-odes)**
 
 This project is a fork of the [SDSC SME-KT-ZH Collaboration RAG](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag).
-Any further fork or derivative work must retain both copyright notices as required by the Apache License 2.0.
+Any further fork or derivative work must retain all copyright notices as required by the Apache License 2.0.
 
 ---
 
@@ -310,5 +312,8 @@ Any further fork or derivative work must retain both copyright notices as requir
 Original project: [SwissDataScienceCenter/sme-kt-zh-collaboration-rag](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag)
 Authors: Swiss Data Science Center (SDSC), ETH Zürich / EPFL
 
-TRAG fork: [voninsight/TRAG](https://github.com/voninsight/TRAG)
-Maintained by: [Vonlanthen INSIGHT](https://www.vonlanthen.tv)
+TRAG production stack: [voninsight/TRAG](https://github.com/voninsight/TRAG)
+Authors: [Vonlanthen INSIGHT](https://www.vonlanthen.tv)
+
+This fork: [rlei-odes](https://github.com/rlei-odes)
+Maintained by: rlei-odes

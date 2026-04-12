@@ -322,4 +322,4 @@ User            Frontend        Backend         VectorStore     LLM
 
 ---
 
-*Vonlanthen INSIGHT · https://www.vonlanthen.tv*
+*SDSC baseline · Vonlanthen INSIGHT production stack · maintained by rlei-odes*

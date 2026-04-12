@@ -87,6 +87,7 @@ def create_rag_router(
     db_dir: Path,
     vector_store_factory: Callable,      # () -> VectorStore proxy
     rebuild_callback: Callable,          # async (config, reset) -> ReindexResult
+    prompts_dir: Path | None = None,     # directory containing system_prompt.*.md files
     status_factory: Callable | None = None,       # () -> dict with indexing progress
     query_status_factory: Callable | None = None, # () -> dict with query phase
     agent_rebuild_callback: Callable | None = None,  # (config) -> None, rebuilds agent without reindex
@@ -95,6 +96,10 @@ def create_rag_router(
     """
     Args:
         db_dir:               Directory where rag_config.json is persisted.
+        prompts_dir:          Directory containing system_prompt.default.md and (optionally)
+                              system_prompt.custom.md. Custom file is gitignored and written
+                              whenever the user saves a non-empty system prompt via the UI.
+                              Deleting the custom file resets to the default prompt.
         vector_store_factory: Zero-arg callable returning the active vector store proxy.
         rebuild_callback:     Async callable(RagConfig, reset: bool) -> ReindexResult.
                               The active KB is resolved inside main.py's callback.
@@ -102,16 +107,39 @@ def create_rag_router(
     router = APIRouter(prefix="/api/v1/rag")
     config_path = db_dir / "rag_config.json"
 
+    def _read_custom_prompt() -> str:
+        if prompts_dir is None:
+            return ""
+        p = prompts_dir / "system_prompt.custom.md"
+        return p.read_text().strip() if p.exists() else ""
+
+    def _write_custom_prompt(text: str) -> None:
+        if prompts_dir is None:
+            return
+        p = prompts_dir / "system_prompt.custom.md"
+        if text:
+            p.write_text(text)
+        elif p.exists():
+            p.unlink()  # empty string = reset to default
+
     def _load_config() -> RagConfig:
+        cfg = RagConfig()
         if config_path.exists():
             try:
-                return RagConfig(**json.loads(config_path.read_text()))
+                data = json.loads(config_path.read_text())
+                data.pop("system_prompt", None)  # always load prompt from file, not JSON
+                cfg = RagConfig(**data)
             except Exception as exc:
                 log.warning(f"Could not load rag_config.json: {exc} — using defaults")
-        return RagConfig()
+        cfg.system_prompt = _read_custom_prompt()
+        return cfg
 
     def _save_config(cfg: RagConfig) -> None:
-        config_path.write_text(cfg.model_dump_json(indent=2))
+        _write_custom_prompt(cfg.system_prompt)
+        # Persist everything except system_prompt (that lives in the prompt file)
+        data = cfg.model_dump()
+        data.pop("system_prompt", None)
+        config_path.write_text(json.dumps(data, indent=2))
 
     @router.get("/config", response_model=RagConfig)
     async def get_config() -> RagConfig:

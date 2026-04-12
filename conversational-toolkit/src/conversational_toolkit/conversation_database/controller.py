@@ -207,7 +207,6 @@ class ConversationalToolkitController:
             _aiter = stream.__aiter__()
             _pending = asyncio.create_task(_next_chunk(_aiter))
             last_chunk = None
-<<<<<<< HEAD
             try:
                 while True:
                     done, _ = await asyncio.wait({_pending}, timeout=_KEEPALIVE)
@@ -234,23 +233,6 @@ class ConversationalToolkitController:
                     _pending = asyncio.create_task(_next_chunk(_aiter))
             finally:
                 _pending.cancel()
-=======
-            async for chunk in stream:
-                last_chunk = chunk
-                if chunk.content:
-                    yield ClientMessage(
-                        id="",
-                        user_id="",
-                        conversation_id=conversation.id,
-                        content=(chunk.content[0].text if chunk.content else None) or "",
-                        role=Roles.ASSISTANT,
-                        sources=[],
-                        reaction=None,
-                        follow_up_questions=chunk.follow_up_questions,
-                        parent_id=input_message.id,
-                        create_timestamp=get_current_timestamp(),
-                    )
->>>>>>> upstream/main
 
             if last_chunk is None:
                 return
@@ -272,11 +254,7 @@ class ConversationalToolkitController:
                     id=generate_uid(),
                     user_id=None,
                     conversation_id=conversation.id,
-<<<<<<< HEAD
                     content=last_chunk.content[0].text if last_chunk.content else "",
-=======
-                    content=(last_chunk.content[0].text if last_chunk.content else None) or "",
->>>>>>> upstream/main
                     role=Roles.ASSISTANT,
                     create_timestamp=get_current_timestamp(),
                     metadata=MetadataProvider.get_metadata(),

@@ -22,6 +22,20 @@ TRAG layers a complete production stack on top, without modifying the upstream n
 
 ---
 
+## Intended Use & Security Notice
+
+TRAG is designed for **on-premises deployment** — all data, documents, and LLM inference stay within your own infrastructure. No data is sent to external services unless you explicitly configure an external LLM or embedding backend.
+
+This system is intended for **trusted internal networks** (corporate LAN, VPN, private server). It is not hardened for exposure to the public internet and comes with no security guarantees beyond what is explicitly documented:
+
+- Authentication is a single shared password — there are no individual user accounts by default
+- The API has no rate limiting or abuse protection
+- Documents ingested into the system are accessible to anyone with the password
+
+Before any broader deployment, review the [Deployment section](#deployment-systemd--nginx) and ensure access is restricted at the network level (firewall, VPN, or reverse proxy with additional auth).
+
+---
+
 ## Feature Overview
 
 ### Baseline (upstream SDSC)
@@ -275,6 +289,17 @@ Key design features of the dataset:
 - **Evidence quality varies deliberately** — from verified EPDs to missing data
 - **Conflicts are intentional** — old vs. new datasheet with different GWP figures
 - **Gaps are part of the answer** — the correct response to missing data is "we don't know"
+
+---
+
+## Known Issues
+
+| # | Issue | Priority |
+|---|---|---|
+| 1 | Images and tables not extracted from PDFs | High |
+| 2 | Incremental indexing not implemented — adding a new document to an existing KB requires a full reset reindex | Medium |
+| 3 | pgvector: connection instability on LAN (no fallback to ChromaDB) | Medium |
+| 4 | Mobile layout: RAG Config Panel always visible | Low |
 
 ---
 

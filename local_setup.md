@@ -45,13 +45,16 @@ BACKEND=ollama python -m sme_kt_zh_collaboration_rag.main
 
 # Or use the lighter gemma3:4b model (~4 GB, faster startup):
 # BACKEND=ollama LLM_MODEL=gemma3:4b python -m sme_kt_zh_collaboration_rag.main
+
+# Note: on subsequent runs the model is read from db/rag_config.json (saved by the UI),
+# not from the env var. Change it in the RAG Config panel if needed.
 ```
 
 ---
 
 ## Frontend
 
-In a second terminal:
+In a second terminal (venv not needed for the frontend):
 
 ```bash
 cd /home/roger/Documents/DEV/voninsight-TRAG/frontend

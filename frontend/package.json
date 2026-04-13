@@ -3,12 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run open-browser && next dev",
-    "dev:mock": "npm run open-browser && NEXT_USE_MOCK_SERVICES=True next dev",
+    "dev": "next dev",
+    "dev:mock": "NEXT_USE_MOCK_SERVICES=True next dev",
     "build": "BUILD_MODE=export next build",
     "start": "next start",
-    "lint": "next lint",
-    "open-browser": "xdg-open http://localhost:3001"
+    "lint": "next lint"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.0.4",

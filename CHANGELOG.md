@@ -5,6 +5,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.27] — 2026-04-13 · rlei-odes
+
+### Added — Project Tooling
+- `CLAUDE.md` — AI assistant briefing: project overview, key files, current config, development guidelines, security principles, commit convention, documentation drift rules
+- `start.sh` / `stop.sh` rewritten — self-contained, path-independent, starts both backend and frontend in the background with PID tracking and log files in `logs/`
+- `start.sh`: Ollama health check on startup; warns if Ollama is unreachable or configured model is not pulled (reads model name from `rag_config.json` dynamically)
+
+### Added — Documentation
+- `README.md`: Known Issues section added
+- `CHANGELOG.md`: changelog reference added to `CLAUDE.md`
+
+### Changed — Frontend
+- Temperature hint updated in all four languages (DE/EN/FR/IT) to show `default: 0.2 (recommended for RAG)`
+- `DEFAULT_SESSION.llm_temperature` aligned to `0.2` to match `rag_config.json`
+- `frontend/package.json`: removed `open-browser` script and auto-launch from `dev` command (was hardcoded to wrong port 3001, opened browser before server was ready)
+
+### Removed
+- `SUMMARY.md` — redundant with `README.md`; Known Issues section preserved and moved to `README.md`
+
+---
+
 ## [TRAG v0.2.26] — 2026-04-12 · rlei-odes
 
 ### Fixed — Merge Conflict Resolution

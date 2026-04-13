@@ -50,6 +50,7 @@ const nextConfig = {
     images: {
         unoptimized: mode === "export",
     },
+    devIndicators: false,
     experimental: {
         forceSwcTransforms: true,
     },

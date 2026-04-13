@@ -1,19 +1,18 @@
 #!/bin/bash
-# INSIGHT Contrib — Demo Stop
+# voninsight-TRAG — Stop backend + frontend
 
-LOG_DIR="/home/patrik/insight-contrib/logs"
+LOG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logs"
 
 if [ -f "$LOG_DIR/backend.pid" ]; then
-    kill $(cat "$LOG_DIR/backend.pid") 2>/dev/null && echo "Backend gestoppt" || echo "Backend war bereits gestoppt"
+    kill "$(cat $LOG_DIR/backend.pid)" 2>/dev/null && echo "Backend stopped" || echo "Backend was already stopped"
     rm "$LOG_DIR/backend.pid"
 fi
 
 if [ -f "$LOG_DIR/frontend.pid" ]; then
-    kill $(cat "$LOG_DIR/frontend.pid") 2>/dev/null && echo "Frontend gestoppt" || echo "Frontend war bereits gestoppt"
+    kill "$(cat $LOG_DIR/frontend.pid)" 2>/dev/null && echo "Frontend stopped" || echo "Frontend was already stopped"
     rm "$LOG_DIR/frontend.pid"
 fi
 
-# Port freigeben
-fuser -k 8081/tcp 2>/dev/null
-fuser -k 3001/tcp 2>/dev/null
-echo "Fertig."
+fuser -k 8080/tcp 2>/dev/null
+fuser -k 3000/tcp 2>/dev/null
+echo "Done."

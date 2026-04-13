@@ -167,7 +167,7 @@ export const app = {
         fieldLlmBackend: "Backend",
         fieldLlmModel: "Model",
         fieldTemperature: "Temperature",
-        fieldTemperatureHint: "0 = deterministic · 1 = creative",
+        fieldTemperatureHint: "0 = deterministic · 1 = creative · default: 0.2 (recommended for RAG)",
         fieldOllamaHost: "Ollama Host",
         fieldOllamaHostHint: "Remote Ollama URL (empty = localhost:11434). E.g.: http://192.168.1.10:11434",
         fieldCustomUrl: "Base URL",

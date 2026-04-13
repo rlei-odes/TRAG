@@ -49,6 +49,17 @@ Currently all authenticated users share a single password and have full access t
 
 **Why:** documents with diagrams, charts, or image-heavy layouts are currently only partially indexed — text around images is captured but image content itself is lost.
 
+### File Upload API + Incremental Indexing
+
+**Goal:** allow external tools (n8n, Make, custom scripts) to push a document directly into a KB via API, without requiring filesystem access or a full reindex.
+
+**Scope:**
+- `POST /api/v1/kb/{id}/documents` — accepts a file upload, writes it to the KB's data directory, and queues it for indexing
+- Requires incremental indexing to be solved first: currently `build_vector_store()` either resets fully or skips entirely — per-document content-hash deduplication must be in place for single-file ingest to be meaningful
+- File upload endpoint should return a job ID that can be polled via the existing reindex-status endpoint
+
+**Why:** closes the loop for automation use cases — the `/v1/chat/completions` endpoint already allows querying the RAG from external tools; this adds the ability to feed documents in from the same tools. Also resolves the known issue of incremental indexing.
+
 ### Ingestion Deduplication
 
 **Goal:** skip documents during indexing that have already been ingested, even if they appear under a different filename.
@@ -73,6 +84,21 @@ The query expansion, HyDE, and reranking prompts are currently hardcoded in Pyth
 **Scope:** same file-based pattern as the system prompt — `prompts/query_expansion.default.md`, `prompts/hyde.default.md`, `prompts/reranking.default.md`, each with a gitignored `.custom.md` override. Admin-only UI exposure makes sense given the technical nature.
 
 **Why:** hardcoded prompts cannot be tuned without touching source code; domain-specific guidance measurably improves retrieval recall and precision.
+
+---
+
+## Integrations
+
+### Workflows Sidebar — Webhook Configuration
+
+**Goal:** make the workflows sidebar panel useful by wiring it up to configurable webhook URLs.
+
+**Scope:**
+- Currently `WORKFLOWS = []` in `frontend/src/components/sections/sidebar/workflows.tsx` — entries are hardcoded
+- Options: expose via environment variable, a `workflows.json` config file (gitignored, with a `.example`), or an admin UI panel
+- n8n and Make are the most relevant targets for the planned deployment
+
+**Why:** enables users to trigger external automations (create a ticket, save to Notion, forward to a colleague) directly from a RAG conversation without leaving the UI.
 
 ---
 

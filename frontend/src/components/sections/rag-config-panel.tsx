@@ -106,7 +106,7 @@ const DEFAULT_SESSION: SessionConfig = {
     reranking_candidate_pool: 15,
     llm_backend: "ollama",
     llm_model: "mistral-nemo:12b",
-    llm_temperature: 0.3,
+    llm_temperature: 0.2,
     ollama_host: "",
     utility_llm_model: "",
     num_ctx: 8192,

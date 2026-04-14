@@ -179,3 +179,14 @@ class PGVectorStore(VectorStore):
                 .where(self.table.c.chunk_metadata["source_file"].astext.isnot(None))
             )
             return sorted({row[0] for row in result if row[0]})
+
+    async def get_file_hashes(self) -> set[str]:
+        """Return the set of file_hash values present in this collection's chunk metadata."""
+        await self._ensure_initialized()
+        async with self.SessionLocal() as session:
+            result = await session.execute(
+                select(self.table.c.chunk_metadata["file_hash"].astext)
+                .distinct()
+                .where(self.table.c.chunk_metadata["file_hash"].astext.isnot(None))
+            )
+            return {row[0] for row in result if row[0]}

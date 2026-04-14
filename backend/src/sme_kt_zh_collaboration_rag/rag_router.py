@@ -65,6 +65,7 @@ class StoreInfo(BaseModel):
 class ReindexResult(BaseModel):
     chunks_indexed: int
     files_processed: int
+    files_skipped: int = 0
     reset: bool
 
 

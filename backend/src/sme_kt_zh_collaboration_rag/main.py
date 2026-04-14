@@ -87,8 +87,10 @@ from sme_kt_zh_collaboration_rag.feature0_baseline_rag import (
     build_embedding_model,
     build_llm,
     build_vector_store,
+    file_hash,
     load_chunks,
     make_vector_store,
+    _collect_candidate_files,
     _make_retriever,
 )
 from sme_kt_zh_collaboration_rag.kb_router import KBInfo, create_kb_router
@@ -365,8 +367,13 @@ class _IndexingCancelled(Exception):
 # ---------------------------------------------------------------------------
 # Ingestion helper
 # ---------------------------------------------------------------------------
-async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
-    """Chunk + embed all files in kb.data_dirs. Returns (chunks_indexed, files_processed)."""
+async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
+    """Chunk + embed all files in kb.data_dirs.
+
+    Returns (chunks_indexed, files_processed, files_skipped).
+    files_skipped counts files excluded by deduplication (already in store or
+    duplicate content within the same batch).
+    """
     global _cancel_requested  # noqa: PLW0603
     _cancel_requested = False
     _index_status.update({
@@ -388,14 +395,102 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
     loop = asyncio.get_event_loop()
     try:
         data_dirs = [Path(d) if Path(d).is_absolute() else _ROOT / d for d in kb.data_dirs]
-        # Run blocking load_chunks in thread pool so event loop stays responsive
+
+        vs_type = getattr(kb, "vs_type", "chromadb") or "chromadb"
+        vs_conn = getattr(kb, "vs_connection_string", "") or ""
+        vs_path = Path(kb.vs_path) if vs_type == "chromadb" else None
+
+        # Instantiate the vector store in the async context so get_file_hashes()
+        # can be awaited here. For ChromaDB this instance is reused in the build
+        # thread below. For PGVector the AsyncEngine is loop-bound, so a second
+        # instance is created inside _sync_build_vs.
+        vs_for_query = make_vector_store(
+            vs_type=vs_type,
+            db_path=vs_path,
+            embedding_model_name=kb.embedding_model,
+            vs_connection_string=vs_conn,
+            table_name=f"rag_{kb.id.replace('-', '_')}",
+        )
+
+        # Fetch hashes already in the store. On reset we skip this — the store
+        # will be cleared anyway, and cross-run dedup does not apply.
+        existing_hashes: set[str] = set()
+        if not reset:
+            existing_hashes = await vs_for_query.get_file_hashes()
+            if existing_hashes:
+                log.info(f"Dedup: {len(existing_hashes)} file hash(es) already in store")
+            else:
+                current_count = await vs_for_query.count()
+                if current_count > 0:
+                    # Store has chunks but none have file_hash — indexed before
+                    # deduplication was introduced. First incremental run will
+                    # re-embed everything; subsequent runs will be incremental.
+                    log.warning(
+                        f"Vector store has {current_count} chunks but no file_hash metadata. "
+                        "This KB was indexed before deduplication support was added. "
+                        "All files will be re-embedded on this run."
+                    )
+
+        # Pre-pass: collect candidates, hash them, apply dedup filters.
+        # File hashing reads entire file bytes — blocking I/O, run in executor.
+        def _prepass() -> tuple[list[Path], dict[Path, str], int, int]:
+            candidates = _collect_candidate_files(
+                data_dirs,
+                max_file_size_mb=kb.max_file_size_mb,
+                max_files=None,
+            )
+            hashes: dict[Path, str] = {}
+            for f in candidates:
+                hashes[f] = file_hash(f)
+
+            filtered: list[Path] = []
+            seen_hashes: set[str] = set()
+            n_skipped_store = 0
+            n_skipped_batch = 0
+
+            for f in candidates:
+                h = hashes[f]
+                if h in existing_hashes:
+                    log.info(f"Skipping {f.name!r} — already in store (hash={h[:8]}…)")
+                    n_skipped_store += 1
+                elif h in seen_hashes:
+                    log.warning(f"Skipping {f.name!r} — duplicate content in batch (hash={h[:8]}…)")
+                    n_skipped_batch += 1
+                else:
+                    seen_hashes.add(h)
+                    filtered.append(f)
+
+            log.info(
+                f"Pre-pass complete: {len(filtered)} to index, "
+                f"{n_skipped_store} already in store, "
+                f"{n_skipped_batch} duplicate in batch"
+            )
+            return filtered, hashes, n_skipped_store, n_skipped_batch
+
+        filtered_files, file_hashes_map, n_skipped_store, n_skipped_batch = \
+            await loop.run_in_executor(None, _prepass)
+
+        n_skipped = n_skipped_store + n_skipped_batch
+
+        if not filtered_files:
+            log.info(f"All files already indexed for KB '{kb.name}' — nothing to embed.")
+            return 0, 0, n_skipped
+
+        # Run blocking load_chunks in thread pool so event loop stays responsive.
         chunks = await loop.run_in_executor(
             None,
-            lambda: load_chunks(data_dirs=data_dirs, max_file_size_mb=kb.max_file_size_mb, on_progress=_on_progress, pdf_ocr_enabled=kb.pdf_ocr_enabled, max_chunk_tokens=getattr(kb, "max_chunk_tokens", 0))
+            lambda: load_chunks(
+                include_files=filtered_files,
+                file_hashes=file_hashes_map,
+                on_progress=_on_progress,
+                pdf_ocr_enabled=kb.pdf_ocr_enabled,
+                max_chunk_tokens=getattr(kb, "max_chunk_tokens", 0),
+            )
         )
         if not chunks:
-            log.warning(f"No chunks found for KB '{kb.name}' — vector store will remain empty.")
-            return 0, 0
+            log.warning(f"No chunks produced for KB '{kb.name}' — vector store unchanged.")
+            return 0, 0, n_skipped
+
         emb = build_embedding_model(kb.embedding_backend, kb.embedding_model, ollama_host=kb.embedding_ollama_host or "", custom_base_url=kb.embedding_custom_base_url or "", custom_api_key=kb.embedding_custom_api_key or "")
         _index_status["phase"] = "embedding"
 
@@ -406,35 +501,43 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int]:
 
         # build_vector_store is async but calls blocking SentenceTransformer.encode().
         # Run it in a thread with its own event loop to keep the main loop responsive.
-        vs_type = getattr(kb, "vs_type", "chromadb") or "chromadb"
-        vs_conn = getattr(kb, "vs_connection_string", "") or ""
-        vs_path = Path(kb.vs_path) if vs_type == "chromadb" else None
+        # For PGVector, AsyncEngine is loop-bound: create a fresh instance inside
+        # the thread's own loop rather than reusing vs_for_query.
         def _sync_build_vs():
             new_loop = asyncio.new_event_loop()
             try:
-                vs_instance = make_vector_store(
-                    vs_type=vs_type,
-                    db_path=vs_path,
-                    embedding_model_name=kb.embedding_model,
-                    vs_connection_string=vs_conn,
-                    table_name=f"rag_{kb.id.replace('-', '_')}",
-                )
+                if vs_type == "pgvector":
+                    vs_instance = make_vector_store(
+                        vs_type=vs_type,
+                        db_path=vs_path,
+                        embedding_model_name=kb.embedding_model,
+                        vs_connection_string=vs_conn,
+                        table_name=f"rag_{kb.id.replace('-', '_')}",
+                    )
+                else:
+                    vs_instance = vs_for_query  # ChromaDB: safe to reuse across threads
                 return new_loop.run_until_complete(
                     build_vector_store(
                         chunks=chunks, embedding_model=emb, db_path=vs_path or VS_PATH,
                         reset=reset, on_embed_progress=_on_embed_progress,
                         batch_size=kb.embedding_batch_size,
                         vector_store=vs_instance,
+                        existing_hashes=existing_hashes,
                     )
                 )
             finally:
                 new_loop.close()
         await loop.run_in_executor(None, _sync_build_vs)
         n_files = len(Counter(c.metadata.get("source_file", "?") for c in chunks))
-        return len(chunks), n_files
+        log.info(
+            f"Ingestion complete: {n_files} new files embedded, "
+            f"{n_skipped_store} skipped (already in store), "
+            f"{n_skipped_batch} skipped (duplicate in batch)"
+        )
+        return len(chunks), n_files, n_skipped
     except _IndexingCancelled:
         log.info("Indexing cancelled by user request.")
-        return 0, 0
+        return 0, 0, 0
     finally:
         _cancel_requested = False
         from datetime import datetime, timezone
@@ -578,9 +681,9 @@ def build_server():
         log.info(msg)
 
         async def _bg_ingest() -> None:
-            chunks_n, files_n = await _run_ingestion(active_kb, RESET_VS)
+            chunks_n, files_n, skipped_n = await _run_ingestion(active_kb, RESET_VS)
             kb_router.update_stats(active_kb.id, chunks_n, files_n)
-            log.info(f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files.")
+            log.info(f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files ({skipped_n} skipped).")
 
         asyncio.create_task(_bg_ingest())
         log.info("Auto-ingestion running in background — HTTP server is ready.")
@@ -595,7 +698,7 @@ def build_server():
         except Exception:
             kb = active_kb
 
-        chunks_n, files_n = await _run_ingestion(kb, reset)
+        chunks_n, files_n, skipped_n = await _run_ingestion(kb, reset)
         kb_router.update_stats(kb.id, chunks_n, files_n)
 
         # Rebuild so BM25 re-indexes new content
@@ -605,7 +708,7 @@ def build_server():
         vs_proxy.switch(new_vs)
         agent_proxy.switch(new_agent)
 
-        return ReindexResult(chunks_indexed=chunks_n, files_processed=files_n, reset=reset)
+        return ReindexResult(chunks_indexed=chunks_n, files_processed=files_n, files_skipped=skipped_n, reset=reset)
 
     def on_agent_rebuild(cfg: RagConfig) -> None:
         kb = kb_router.get_active_kb()

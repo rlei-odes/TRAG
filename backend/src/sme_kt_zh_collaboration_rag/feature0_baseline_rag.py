@@ -39,6 +39,7 @@ Usage:
 """
 
 import asyncio
+import hashlib
 import os
 from collections import Counter
 from pathlib import Path
@@ -384,26 +385,28 @@ def _split_chunk_by_tokens(chunk: Chunk, max_tokens: int) -> list[Chunk]:
     return sub_chunks if sub_chunks else [chunk]
 
 
-def load_chunks(
-    data_dirs: list[Path] | None = None,
-    max_files: int | None = None,
-    max_file_size_mb: float = MAX_FILE_SIZE_MB,
-    on_progress=None,  # callable(current_file, file_index, total_files, chunks_so_far)
-    pdf_ocr_enabled: bool = True,
-    max_chunk_tokens: int = 0,
-) -> list[Chunk]:
-    """Load documents from one or more directories and split them into chunks.
+def file_hash(path: Path) -> str:
+    """SHA-256 fingerprint of a file's raw bytes.
 
-    Args:
-        data_dirs: List of directories to ingest. Defaults to [DATA_DIR].
-        max_files:  Cap total files (useful for dev/debug).
-        max_file_size_mb: Skip files larger than this limit.
+    The hash is content-based: renaming a file produces the same hash;
+    modifying it produces a different one.
     """
-    dirs = data_dirs if data_dirs else [DATA_DIR]
-    all_chunks: list[Chunk] = []
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
+
+def _collect_candidate_files(
+    data_dirs: list[Path],
+    max_file_size_mb: float,
+    max_files: int | None = None,
+) -> list[Path]:
+    """Return the filtered list of ingestable files from the given directories.
+
+    Applies the same rules as the ingestion loop: supported extensions only,
+    no EVALUATION files, within the size limit. Used by both the dedup pre-pass
+    and load_chunks (when include_files is not provided).
+    """
     all_files: list[Path] = []
-    for d in dirs:
+    for d in data_dirs:
         if not d.exists():
             logger.warning(f"Data directory not found, skipping: {d}")
             continue
@@ -420,24 +423,66 @@ def load_chunks(
             else:
                 logger.warning(f"Skipping unsupported file type {ext!r}: {f.name}")
 
-    supported_files = [
+    candidates = [
         f
         for f in all_files
         if f.suffix.lower() in _CHUNKERS and "EVALUATION" not in f.name
     ]
-    logger.info(f"Chunking {len(supported_files)} files from {[str(d) for d in dirs]}")
 
-    for file_path in supported_files:
-        size_mb = file_path.stat().st_size / (1024 * 1024)
+    result: list[Path] = []
+    for f in candidates:
+        size_mb = f.stat().st_size / (1024 * 1024)
         if size_mb > max_file_size_mb:
             logger.warning(
-                f"Skipping {file_path.name}: file too large "
+                f"Skipping {f.name}: file too large "
                 f"({size_mb:.1f} MB > {max_file_size_mb} MB limit)"
             )
             continue
+        result.append(f)
+
+    return result
+
+
+def load_chunks(
+    data_dirs: list[Path] | None = None,
+    max_files: int | None = None,
+    max_file_size_mb: float = MAX_FILE_SIZE_MB,
+    on_progress=None,  # callable(current_file, file_index, total_files, chunks_so_far)
+    pdf_ocr_enabled: bool = True,
+    max_chunk_tokens: int = 0,
+    include_files: list[Path] | None = None,    # if set, skip data_dirs discovery
+    file_hashes: dict[Path, str] | None = None, # precomputed hashes for stamping chunks
+) -> list[Chunk]:
+    """Load documents and split them into chunks.
+
+    Args:
+        data_dirs: Directories to ingest. Defaults to [DATA_DIR]. Ignored when
+            include_files is provided.
+        max_files: Cap total files (useful for dev/debug). Ignored when
+            include_files is provided.
+        max_file_size_mb: Skip files larger than this limit. Ignored when
+            include_files is provided (caller is responsible for pre-filtering).
+        include_files: When provided, parse exactly these files instead of
+            scanning data_dirs. The list is assumed to be pre-filtered
+            (extension, size, dedup) by the caller.
+        file_hashes: Map of path -> SHA-256 hash. When provided, each chunk is
+            stamped with chunk.metadata["file_hash"]. If a file is not in the
+            map, the hash is computed on the fly so that standalone / notebook
+            use always produces stamped chunks.
+    """
+    dirs = data_dirs if data_dirs else [DATA_DIR]
+    all_chunks: list[Chunk] = []
+
+    if include_files is not None:
+        supported_files = include_files
+        logger.info(f"Chunking {len(supported_files)} files (pre-filtered by dedup pre-pass)")
+    else:
+        supported_files = _collect_candidate_files(dirs, max_file_size_mb, max_files)
+        logger.info(f"Chunking {len(supported_files)} files from {[str(d) for d in dirs]}")
+
+    for file_idx, file_path in enumerate(supported_files):
         chunker = _CHUNKERS[file_path.suffix.lower()]
         try:
-            file_idx = supported_files.index(file_path)
             if on_progress:
                 on_progress(file_path.name, file_idx, len(supported_files), len(all_chunks))
             kwargs = {}
@@ -449,10 +494,12 @@ def load_chunks(
                 for c in file_chunks:
                     split.extend(_split_chunk_by_tokens(c, max_chunk_tokens))
                 file_chunks = split
+            h = (file_hashes or {}).get(file_path) or file_hash(file_path)
             for chunk in file_chunks:
                 chunk.metadata["source_file"] = file_path.name
                 chunk.metadata["source"] = file_path.name
                 chunk.metadata["title"] = chunk.title
+                chunk.metadata["file_hash"] = h
             all_chunks.extend(file_chunks)
             logger.debug(f"  {file_path.name}: {len(file_chunks)} chunks")
             if on_progress:
@@ -485,8 +532,15 @@ async def build_vector_store(
     batch_size: int = 50,
     on_embed_progress=None,  # callable(batch_index, total_batches)
     vector_store: VectorStore | None = None,  # if provided, use instead of creating ChromaDB
+    existing_hashes: set[str] | None = None,  # precomputed from pre-pass; avoids second metadata scan
 ) -> VectorStore:
-    """Embed chunks and persist them in a vector store (ChromaDB or PGVector)."""
+    """Embed chunks and persist them in a vector store (ChromaDB or PGVector).
+
+    Deduplication: chunks are grouped by file_hash. Groups whose hash is already
+    present in the store are skipped. existing_hashes can be passed from the
+    ingestion pre-pass to avoid a second full metadata scan; when None (e.g.
+    standalone / notebook use), get_file_hashes() is called internally.
+    """
     if vector_store is None:
         vector_store = ChromaDBVectorStore(db_path=str(db_path))
 
@@ -501,18 +555,45 @@ async def build_vector_store(
             await vector_store.clear()
             logger.info("Reset vector store (cleared all rows)")
 
-    current_count = await vector_store.count()
-    if not reset and current_count > 0:
-        logger.info(
-            f"Vector store already contains {current_count} chunks — skipping embedding."
-        )
-        return vector_store
-
     if not chunks:
         logger.warning("No chunks to embed — vector store will be empty.")
         return vector_store
 
-    logger.info(f"Embedding {len(chunks)} chunks ...")
+    # Validate that all chunks carry a file_hash — stamped by load_chunks.
+    missing = [c for c in chunks if "file_hash" not in c.metadata]
+    if missing:
+        raise ValueError(
+            f"{len(missing)} chunk(s) are missing 'file_hash' in metadata. "
+            "Ensure load_chunks() stamped them before calling build_vector_store()."
+        )
+
+    # Resolve the set of hashes already in the store (belt-and-suspenders check).
+    # When called from _run_ingestion the pre-pass passes existing_hashes so we
+    # avoid a second full metadata scan.
+    if existing_hashes is None:
+        existing_hashes = await vector_store.get_file_hashes()
+        if existing_hashes:
+            logger.debug(f"build_vector_store: {len(existing_hashes)} hashes already in store")
+
+    # Group chunks by file_hash and filter out files already indexed.
+    chunks_by_hash: dict[str, list[Chunk]] = {}
+    for chunk in chunks:
+        h = chunk.metadata["file_hash"]
+        chunks_by_hash.setdefault(h, []).append(chunk)
+
+    chunks_to_embed: list[Chunk] = []
+    for h, group in chunks_by_hash.items():
+        fname = group[0].metadata.get("source_file", "?")
+        if h in existing_hashes:
+            logger.info(f"Skipping {fname!r} — already in store (hash={h[:8]}…)")
+        else:
+            chunks_to_embed.extend(group)
+
+    if not chunks_to_embed:
+        logger.info("All incoming chunks are already in the store — nothing to embed.")
+        return vector_store
+
+    logger.info(f"Embedding {len(chunks_to_embed)} chunks ...")
 
     # nomic-embed-text requires task-specific prefixes for best retrieval quality:
     #   "search_document: <text>"  when indexing corpus chunks
@@ -520,7 +601,7 @@ async def build_vector_store(
     # Other models ignore these prefixes harmlessly.
     use_nomic_prefix = "nomic" in getattr(embedding_model, "model_name", "").lower()
 
-    text_chunks = [c for c in chunks if c.mime_type.startswith("text")]
+    text_chunks = [c for c in chunks_to_embed if c.mime_type.startswith("text")]
     for i in range(0, len(text_chunks), batch_size):
         batch = text_chunks[i : i + batch_size]
 

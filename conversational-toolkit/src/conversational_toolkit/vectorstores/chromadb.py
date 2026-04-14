@@ -140,6 +140,19 @@ class ChromaDBVectorStore(VectorStore):
             if m and m.get("source_file")
         })
 
+    async def get_file_hashes(self) -> set[str]:
+        """Return the set of file_hash values present in this collection's chunk metadata."""
+        import asyncio
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, lambda: self.collection.get(include=["metadatas"])
+        )
+        return {
+            m["file_hash"]
+            for m in (result.get("metadatas") or [])
+            if m and "file_hash" in m
+        }
+
     async def get_chunks_by_ids(self, chunk_ids: int | list[int]) -> list[Chunk]:
         """
         Retrieve chunks by their IDs.

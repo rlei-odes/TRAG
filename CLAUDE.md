@@ -164,6 +164,8 @@ chore(scripts): rewrite start.sh for local portability
 
 ## Commit and Push Workflow
 
+This is currently a solo fork — committing directly to `main` is fine for day-to-day work and small improvements. Use a feature branch when a change is large, experimental, or spans multiple sessions where incomplete code would be disruptive on `main`.
+
 1. Make the changes
 2. Describe to the user what was changed and why
 3. Commit with a conventional commit message

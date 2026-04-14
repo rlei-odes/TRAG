@@ -123,6 +123,7 @@ export const app = {
         statusFullReindex: "Reindicizzazione completa...",
         statusIncrementalIndex: "Indicizzazione incrementale...",
         statusIndexed: "Indicizzato: {{chunks}} chunk da {{files}} file.",
+        statusIndexedWithSkips: "Indicizzato: {{chunks}} chunk da {{files}} nuovi file ({{skipped}} già aggiornati).",
         statusPresetSaved: "Preset «{{name}}» salvato.",
         statusError: "Errore: {{code}}",
         effectInstant: "Effetto immediato — nessuna reindicizzazione necessaria",

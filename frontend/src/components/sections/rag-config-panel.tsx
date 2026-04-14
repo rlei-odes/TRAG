@@ -702,7 +702,11 @@ export const RagConfigPanel: FunctionComponent = () => {
             });
             if (r.ok) {
                 const data = await r.json();
-                setStatus({ type: "success", text: t("rag.statusIndexed", { chunks: data.chunks_indexed, files: data.files_processed }) });
+                const skipped: number = data.files_skipped ?? 0;
+                const statusText = skipped > 0
+                    ? t("rag.statusIndexedWithSkips", { chunks: data.chunks_indexed, files: data.files_processed, skipped })
+                    : t("rag.statusIndexed", { chunks: data.chunks_indexed, files: data.files_processed });
+                setStatus({ type: "success", text: statusText });
                 await fetchKbRegistry();
             } else if (r.status === 409) {
                 setStatus({ type: "error", text: t("rag.statusAlreadyIndexing") });

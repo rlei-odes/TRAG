@@ -4,10 +4,12 @@
 
 ## TRAG Extensions
 
-**Vonlanthen INSIGHT** · https://www.vonlanthen.tv · GitHub: [@voninsight](https://github.com/voninsight)
+**Vonlanthen INSIGHT** · https://www.vonlanthen.tv · GitHub: [@voninsight](https://github.com/voninsight)  
+**rlei-odes** · GitHub: [@rlei-odes](https://github.com/rlei-odes)
 
 Production stack built on top of the SDSC baseline:
 
+- Content-hash deduplication for ingestion (cross-run and within-batch, SHA-256, pre-parse filtering)
 - Multi-knowledge-base architecture (KB registry, hot-swap without restart)
 - pgvector backend alongside ChromaDB (per-KB vector store selector)
 - Hybrid retrieval: BM25 + semantic vector search via Reciprocal Rank Fusion (RRF)

@@ -5,6 +5,25 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.28] — 2026-04-14 · rlei-odes
+
+### Added — Ingestion Deduplication
+
+Content-hash based deduplication prevents redundant parsing and embedding when the same
+file is encountered more than once, either across runs or within a single batch.
+
+- `file_hash()` — SHA-256 fingerprint of raw file bytes; content-based, filename-agnostic
+- `_collect_candidate_files()` — shared helper for file discovery (extension, size, EVALUATION filter), used by both the dedup pre-pass and `load_chunks`
+- Pre-pass in `_run_ingestion`: hashes all candidate files in an executor before parsing; applies cross-run dedup (skip if hash already in store) and within-batch dedup (skip duplicate content in the same run); only files that pass both checks reach `load_chunks`
+- `load_chunks` gains `include_files` and `file_hashes` params; stamps every chunk with `chunk.metadata["file_hash"]` for future lookups; falls back to on-the-fly hashing when called standalone (notebook compatible)
+- `build_vector_store` removes the all-or-nothing `current_count > 0` guard (which silently skipped new files on incremental runs); groups chunks by `file_hash`, skips groups already in the store; accepts `existing_hashes` from caller to avoid a second full metadata scan
+- `VectorStore.get_file_hashes()` — new abstract method; implemented in `ChromaDBVectorStore` (metadata-only scan via `run_in_executor`) and `PGVectorStore` (DISTINCT SQL on `chunk_metadata["file_hash"]`)
+- `ReindexResult` gains `files_skipped` field; success toast in all four UI languages shows skipped count when non-zero
+- Warning logged when a store is non-empty but has no `file_hash` metadata (KB indexed before this feature; first incremental run re-embeds everything, subsequent runs are incremental)
+- `ARCHITECTURE.md`: new Ingestion Pipeline chapter documenting the full flow, dedup layers, key functions, and threading model
+
+---
+
 ## [TRAG v0.2.27] — 2026-04-13 · rlei-odes
 
 ### Added — Project Tooling
@@ -143,7 +162,7 @@ This release represents the full TRAG production stack on top of the SDSC baseli
 
 ---
 
-## [Upstream Baseline] — 2026-03
+## [Upstream Baseline] — 2026-03 · SDSC
 
 Notebook material reviewed and finalized by Paulina Koerner (SDSC):
 - All feature notebooks (`feature0a` through `feature4e`) reviewed and corrected
@@ -164,4 +183,3 @@ Original baseline implemented by the Swiss Data Science Center (SDSC):
 
 ---
 
-*Vonlanthen INSIGHT · https://www.vonlanthen.tv*

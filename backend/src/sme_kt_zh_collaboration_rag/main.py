@@ -191,6 +191,18 @@ class CustomRAG(RAG):
                     _query_status["phase"] = "generating"
                     first = False
                 yield chunk
+        except Exception as exc:
+            # Yield the error as a visible message so the frontend doesn't spin forever.
+            # Common cases: model not pulled, Ollama not running, network error.
+            error_text = str(exc)
+            if "not found" in error_text and "404" in error_text:
+                msg = f"LLM model not found. Run: ollama pull {self.llm.model}"
+            elif "connection" in error_text.lower() or "refused" in error_text.lower():
+                msg = "Cannot reach Ollama. Is it running? Run: ollama serve"
+            else:
+                msg = f"LLM error: {error_text}"
+            log.error(f"LLM stream error: {exc}")
+            yield AgentAnswer(content=[MessageContent(type="text", text=msg)])
         finally:
             _query_status.update({"active": False, "phase": "idle"})
 
@@ -199,6 +211,11 @@ class CustomRAG(RAG):
             answer.content[0].text if answer.content else ""
         )
         content = json_answer.get("answer", "")
+        # Fallback: if JSON parsing lost the content, use the raw accumulated text.
+        # This prevents a silent empty-answer when the model output doesn't match
+        # the expected JSON schema on the final chunk.
+        if not content and answer.content:
+            content = answer.content[0].text
         relevant_source_ids = json_answer.get("used_sources_id", [])
         follow_up_questions = json_answer.get("follow_up_questions", [])
         unique_sources = list({s.id: s for s in answer.sources}.values())

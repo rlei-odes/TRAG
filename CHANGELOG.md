@@ -5,6 +5,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.29+] — 2026-04-16 · rlei-odes
+
+### Fixed — Answer Disappears After Streaming
+
+`mistral-nemo:12b` emits literal newlines inside JSON string values, which is invalid JSON. `partial_json_loads` returned `{}`, the `"answer"` key was missing, and the DB record was saved as empty — causing the streamed answer to vanish when the frontend refreshed from the DB.
+
+- `_escape_literal_newlines()` added to `utils/json.py` — walks the JSON character-by-character and escapes bare `\n`/`\r` inside string values before parsing
+- `parse_llm_json_stream` now catches all exceptions from `partial_json_loads`, not only `ValueError`
+- `_answer_post_processing` in `main.py` falls back to the raw accumulated text when the `"answer"` key cannot be extracted, preventing silent data loss
+
+### Fixed — CORS Errors from Footer and SendBar
+
+`footer.tsx` and `send-bar.tsx` used `process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:8080"` as API base, causing direct browser requests instead of routing through the Next.js proxy. Changed to `typeof window !== "undefined" ? "" : (process.env.SERVER_URL ?? "")`, matching the pattern used by all other components.
+
+### Fixed — Duplicate React Key in Suggestions
+
+`Suggestions` component keyed suggestion cards by `suggestion.text`, which caused a React warning and potential rendering issues when two suggestions shared the same text (e.g. both using `"Summarise:"`). Changed to index-based keys.
+
+---
+
 ## [TRAG v0.2.29] — 2026-04-16 · rlei-odes
 
 ### Fixed — Markdown and Plain-Text Ingestion

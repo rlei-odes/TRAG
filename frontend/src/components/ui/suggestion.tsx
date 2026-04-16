@@ -24,9 +24,9 @@ export const Suggestions: FunctionComponent<Props> = (props: Props) => {
     if (isMobile) {
         return (
             <div className="flex w-max">
-                {suggestions.map((suggestion) => (
-                    <div className="pl-2 first:pl-0 w-[320px]" key={suggestion.text}>
-                        <SuggestionElement key={suggestion.text} {...suggestion} onClick={onClick} />
+                {suggestions.map((suggestion, index) => (
+                    <div className="pl-2 first:pl-0 w-[320px]" key={index}>
+                        <SuggestionElement key={index} {...suggestion} onClick={onClick} />
                     </div>
                 ))}
             </div>
@@ -36,7 +36,7 @@ export const Suggestions: FunctionComponent<Props> = (props: Props) => {
         <div className="flex flex-col w-full">
             <div className="grid grid-cols-2 gap-2">
                 {firstSuggestions.map((suggestion, index) => (
-                    <SuggestionElement key={suggestion.text} {...suggestion} onClick={onClick} />
+                    <SuggestionElement key={index} {...suggestion} onClick={onClick} />
                 ))}
             </div>
             {hasOddNumberOfElements && (

@@ -353,6 +353,7 @@ export const RagConfigPanel: FunctionComponent = () => {
     const [status, setStatus] = useState<StatusMessage>({ type: "idle", text: "" });
     const [kbForm, setKbForm] = useState<"create" | "edit" | null>(null);
     const [isIndexing, setIsIndexing] = useState(false);
+    const prevFinishedAt = useRef<string>("");
 
     // LiteLLM dynamic model list
     const [litellmModels, setLitellmModels] = useState<string[]>([]);
@@ -517,13 +518,26 @@ export const RagConfigPanel: FunctionComponent = () => {
                 if (r.ok && active) {
                     const d = await r.json();
                     setIsIndexing(!!d.indexing);
+                    // Detect completion: same pattern as indexing-status.tsx
+                    if (!d.indexing && d.finished_at && d.finished_at !== prevFinishedAt.current) {
+                        prevFinishedAt.current = d.finished_at;
+                        if (d.last_result) {
+                            const { chunks_indexed, files_processed, files_skipped } = d.last_result;
+                            const skipped: number = files_skipped ?? 0;
+                            const statusText = skipped > 0
+                                ? t("rag.statusIndexedWithSkips", { chunks: chunks_indexed, files: files_processed, skipped })
+                                : t("rag.statusIndexed", { chunks: chunks_indexed, files: files_processed });
+                            setStatus({ type: "success", text: statusText });
+                            await fetchKbRegistry();
+                        }
+                    }
                 }
             } catch { /* ignore */ }
         };
         poll();
         const id = setInterval(poll, 3000);
         return () => { active = false; clearInterval(id); };
-    }, []);
+    }, [t, fetchKbRegistry]);
 
     useEffect(() => { if (showSaveAs) saveAsRef.current?.focus(); }, [showSaveAs]);
 
@@ -700,19 +714,13 @@ export const RagConfigPanel: FunctionComponent = () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ reset }),
             });
-            if (r.ok) {
-                const data = await r.json();
-                const skipped: number = data.files_skipped ?? 0;
-                const statusText = skipped > 0
-                    ? t("rag.statusIndexedWithSkips", { chunks: data.chunks_indexed, files: data.files_processed, skipped })
-                    : t("rag.statusIndexed", { chunks: data.chunks_indexed, files: data.files_processed });
-                setStatus({ type: "success", text: statusText });
-                await fetchKbRegistry();
-            } else if (r.status === 409) {
+            // POST returns immediately with {"started": true} — result arrives via polling
+            if (r.status === 409) {
                 setStatus({ type: "error", text: t("rag.statusAlreadyIndexing") });
-            } else {
+            } else if (!r.ok) {
                 setStatus({ type: "error", text: t("rag.statusError", { code: r.status }) });
             }
+            // On success: keep loading state; polling loop will set success when finished_at changes
         } catch { setStatus({ type: "error", text: t("rag.statusConnError") }); }
     };
 

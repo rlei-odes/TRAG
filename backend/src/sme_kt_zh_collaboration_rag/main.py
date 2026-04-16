@@ -355,7 +355,7 @@ _index_status: dict = {
     "indexing": False, "phase": "loading",
     "current_file": "", "file_index": 0, "total_files": 0, "chunks_so_far": 0,
     "embed_batch": 0, "embed_total_batches": 0,
-    "kb_name": "", "finished_at": "",
+    "kb_name": "", "finished_at": "", "last_result": None,
 }
 _cancel_requested: bool = False
 
@@ -380,7 +380,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
         "indexing": True, "phase": "loading",
         "current_file": "", "file_index": 0, "total_files": 0, "chunks_so_far": 0,
         "embed_batch": 0, "embed_total_batches": 0,
-        "kb_name": kb.name, "finished_at": "",
+        "kb_name": kb.name, "finished_at": "", "last_result": None,
     })
 
     def _on_progress(current_file: str, file_index: int, total_files: int, chunks_so_far: int) -> None:
@@ -540,9 +540,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
         return 0, 0, 0
     finally:
         _cancel_requested = False
-        from datetime import datetime, timezone
         _index_status["indexing"] = False
-        _index_status["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -708,7 +706,11 @@ def build_server():
         vs_proxy.switch(new_vs)
         agent_proxy.switch(new_agent)
 
-        return ReindexResult(chunks_indexed=chunks_n, files_processed=files_n, files_skipped=skipped_n, reset=reset)
+        from datetime import datetime, timezone
+        result = ReindexResult(chunks_indexed=chunks_n, files_processed=files_n, files_skipped=skipped_n, reset=reset)
+        _index_status["last_result"] = result.model_dump()
+        _index_status["finished_at"] = datetime.now(timezone.utc).isoformat()
+        return result
 
     def on_agent_rebuild(cfg: RagConfig) -> None:
         kb = kb_router.get_active_kb()

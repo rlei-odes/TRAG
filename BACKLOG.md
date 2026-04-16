@@ -38,6 +38,14 @@ Currently all authenticated users share a single password and have full access t
 
 ## Ingestion
 
+### Reindex Success Toast — UX Improvements
+
+Small improvements to the success message shown in the RAG Config panel after indexing completes:
+
+- **Split skip counts:** `files_skipped` in `ReindexResult` currently combines cross-run skips and within-batch duplicate skips into one number. Split into `files_skipped_store` and `files_skipped_batch` so the toast can show e.g. "38 already up to date, 1 duplicate skipped" when both occur.
+- **Timestamp:** show the completion time in the toast (the `finished_at` value is already available in the status response).
+- **Auto-dismiss vs. persistent:** ingestion typically runs for minutes, so the user has likely left the window by the time it finishes. Showing a persistent result (rather than auto-dismissing after 8 s) may actually be better UX — the user comes back and can see what happened. Consider showing a relative timestamp ("finished 3 minutes ago") instead of auto-dismissing, so the result stays visible but still conveys when it happened.
+
 ### Image Parsing in Documents
 
 **Goal:** extract and index content from images embedded in PDFs and other documents (diagrams, scanned pages, figures with captions).
@@ -60,21 +68,6 @@ Currently all authenticated users share a single password and have full access t
 
 **Why:** closes the loop for automation use cases — the `/v1/chat/completions` endpoint already allows querying the RAG from external tools; this adds the ability to feed documents in from the same tools. Also resolves the known issue of incremental indexing.
 
-### Ingestion Deduplication
-
-**Goal:** skip documents during indexing that have already been ingested, even if they appear under a different filename.
-
-**Scope:**
-- Compute a content hash (SHA-256) of each document at ingest time and store it alongside the chunks
-- On subsequent index runs, compare incoming file hashes against stored hashes and skip duplicates (cross-run dedup)
-- Within a single ingestion batch, detect and skip files with identical content (within-batch dedup)
-- Surface skipped files in the log with hash prefix for traceability
-- `reset=True` clears the store and bypasses cross-run dedup; within-batch dedup still applies
-
-**Why:** in practice the same document often circulates under multiple filenames. Without deduplication, the vector store accumulates redundant chunks that dilute retrieval quality and waste storage.
-
-**Spec:** see [Appendix: Spec: Ingestion Deduplication](#spec-ingestion-deduplication) below.
-
 ### Customisable Retrieval Prompts
 
 The query expansion, HyDE, and reranking prompts are currently hardcoded in Python. Unlike the system prompt (answer tone/format), these affect retrieval quality and could benefit from domain-specific tuning.
@@ -90,6 +83,48 @@ The query expansion, HyDE, and reranking prompts are currently hardcoded in Pyth
 
 ---
 
+## Admin Tooling
+
+### Retrieval Debugger — Chunk Inspector & Retrieval Probe
+
+**Goal:** an admin-only UI panel that exposes the internals of the retrieval pipeline, allowing configuration tuning and quality assessment without going through the LLM.
+
+**Why:** currently the only way to assess retrieval quality is to run a full RAG query and judge the answer. That conflates LLM quality with retrieval quality. A dedicated retrieval view lets you tune k, compare ranking methods, and inspect what was actually indexed — independently of the LLM.
+
+**Two modes:**
+
+*Chunk browser*
+- Query the vector store directly by filename, source metadata, or keyword
+- Display raw chunks: content, source file, chunk index, file hash, any other stored metadata
+- Useful for verifying what was indexed from a given document and spotting bad chunking
+
+*Retrieval probe*
+- Enter a natural language question; run the full retrieval pipeline but stop before the LLM
+- Display the top-k results as a ranked list with scores broken out by method:
+  - BM25 score
+  - Semantic (vector) score
+  - RRF combined rank
+- Allow adjusting k in the UI and seeing immediately how the result set changes
+- Useful for: setting k, diagnosing why a relevant chunk isn't surfacing, comparing the effect of toggling BM25 on/off
+
+**Backend:**
+
+Add `POST /api/v1/rag/retrieve` — takes a query string and retrieval parameters (k, bm25 on/off, reranking on/off), runs the retrieval pipeline, and returns the chunks with per-method scores. No LLM call. The retrieval step is already decoupled from the LLM in the existing code, so this is mostly exposure work.
+
+**Frontend:**
+
+The admin view is a dedicated full-width page layout, not a panel crammed into the existing sidebar. Layout: large main content area on the left for the chunk browser / retrieval probe, with the existing RAG config sidebar sitting beside it on the right — same sidebar, different screen context with more room to breathe.
+
+Two sub-views in the main area, selectable by toggle or tabs: chunk browser and retrieval probe.
+
+*Retrieval probe results list:*
+
+Each result is a card with a large rank number on the left (bold, prominent), then the chunk content and scores. The list shows **k + y** results total, where k is the current configured cutoff and y is a configurable lookahead (e.g. +5). The first k cards render normally; the remaining y cards are visually dimmed — lower opacity, maybe a subtle "outside k" label — so you can see exactly what the RAG would discard. This makes the effect of changing k immediately legible: raise k by 2 and two grayed cards become active.
+
+**Scope note:** the UI cards are non-trivial but not complex — a ranked list with expandable text. Generic vector store UIs (ChromaDB-UI etc.) don't know about the BM25/RRF pipeline, so building this in-app is the only way to get the full picture.
+
+---
+
 ## Integrations
 
 ### Workflows Sidebar — Webhook Configuration
@@ -102,6 +137,58 @@ The query expansion, HyDE, and reranking prompts are currently hardcoded in Pyth
 - n8n and Make are the most relevant targets for the planned deployment
 
 **Why:** enables users to trigger external automations (create a ticket, save to Notion, forward to a colleague) directly from a RAG conversation without leaving the UI.
+
+---
+
+## Security & Privacy
+
+### Full Offline Mode
+
+**Goal:** the system should be fully functional with no internet connection after initial setup (model downloads). All dependencies that phone home should have their update checks suppressed by default.
+
+**Known issue:** SentenceTransformer (and potentially other services in the stack) makes outbound requests on every model load to check for updates, even when all assets are fully cached locally. With no internet this causes multi-second retry delays and noisy error logs before falling back to the cache. It also constitutes unnecessary telemetry to third-party services.
+
+**Fix:** set an `TRAG_OFFLINE=1` environment variable in `start.sh` that maps to the relevant library-specific offline flags (e.g. `HF_HUB_OFFLINE=1` for the HuggingFace ecosystem). As other services are identified, their suppression flags are added under the same umbrella variable.
+
+```bash
+# in start.sh, before the backend launch:
+TRAG_OFFLINE="${TRAG_OFFLINE:-1}" \
+HF_HUB_OFFLINE="${TRAG_OFFLINE:-1}" \
+PYTHONPATH="$REPO/backend/src" \
+BACKEND=ollama \
+  "$VENV/bin/python" -m sme_kt_zh_collaboration_rag.main ...
+```
+
+Also document in `local_setup.md` that after first run the system is designed to operate fully offline, what `TRAG_OFFLINE=1` suppresses, and how to temporarily disable it if a model update is actually wanted (`TRAG_OFFLINE=0 ./start.sh`).
+
+### Network Egress Audit — What Phones Home?
+
+**Goal:** produce a complete, verified list of all external network calls made by the system under normal operation, so that the deployment can be assessed for air-gap readiness and data privacy.
+
+**Known calls (from observation):**
+- `huggingface.co` — SentenceTransformer model update check on every `build_embedding_model()` call (fixable with `HF_HUB_OFFLINE=1`, see above)
+- `ollama.com` — Ollama may check for binary or model updates; needs verification
+
+**Unknown / to verify:**
+- ChromaDB — any telemetry or update checks?
+- Docling — any calls during document parsing?
+- Any other Python dependencies that phone home on import or first use?
+
+**Method:** run the backend with network access but with a local DNS proxy or `tcpdump` to capture all outbound DNS queries and HTTPS connections during startup, ingestion, and a query. Catalogue every external host contacted, the reason, and whether it can be suppressed.
+
+**Output:** a documented list in `local_setup.md` (or a dedicated `SECURITY.md`) of all external hosts, what triggers the call, and how to suppress it for air-gapped or privacy-sensitive deployments.
+
+---
+
+## Housekeeping
+
+### Merge feature/ingestion-deduplication to main
+
+Currently on branch `feature/ingestion-deduplication`. Before merging:
+- [x] Dedup tested — incremental, new file, duplicate filename scenarios all pass
+- [x] Fire-and-forget reindex fix applied
+- [x] `MarkdownChunker` `do_ocr` bug fixed
+- [ ] Confirm Re-index ↺ (reset=True) behaviour with a clean store
 
 ---
 

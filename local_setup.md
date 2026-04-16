@@ -17,6 +17,14 @@ nvm install 22
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
+The installer registers a systemd service that starts Ollama automatically on boot. To disable autostart while keeping the binary:
+```bash
+sudo systemctl disable ollama
+```
+To start it manually when needed: `ollama serve` (runs in foreground; use a separate terminal or append `&`).
+
+> If `ollama: command not found` after installation, your shell may not have `/usr/local/bin` in PATH — log out and back in, or add it: `export PATH="/usr/local/bin:$PATH"`
+
 **3. Pull a model** — on 32 GB with passive cooling, `mistral-nemo:12b` is the existing default and works well:
 ```bash
 ollama pull mistral-nemo:12b
@@ -31,7 +39,7 @@ ollama pull mistral-nemo:12b
 ```bash
 cd /home/roger/Documents/DEV/voninsight-TRAG
 
-python3 -m venv .venv
+python3.13 -m venv .venv   # use the explicit version, not generic python3
 source .venv/bin/activate
 
 pip install -r requirements.txt
@@ -115,6 +123,42 @@ Python 3 itself is already on your system — nothing added there.
 | Vector store (ChromaDB) | `voninsight-TRAG/backend/src/sme_kt_zh_collaboration_rag/db/` |
 | Conversation history (JSON) | same `db/` folder |
 | Documents you indexed | `voninsight-TRAG/data/` |
+
+---
+
+## Troubleshooting
+
+**`ModuleNotFoundError: No module named 'uvicorn'` from `start.sh`**
+
+The venv is broken, usually because the system Python version changed (e.g. 3.12 → 3.13) after the venv was created. The venv's `python` symlink ends up pointing at the new Python, which can't see the packages installed under the old version.
+
+Fix — recreate the venv:
+```bash
+cd /home/roger/Documents/DEV/voninsight-TRAG
+rm -rf .venv
+python3.13 -m venv .venv   # explicit version prevents this breaking again
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**`ollama: command not found`**
+
+Either Ollama isn't installed, or `/usr/local/bin` isn't in your shell's PATH.
+
+Check:
+```bash
+ls /usr/local/bin/ollama   # should exist if installed
+```
+
+If missing, reinstall:
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+If the binary exists but the command isn't found, add `/usr/local/bin` to your PATH:
+```bash
+export PATH="/usr/local/bin:$PATH"   # add to ~/.bashrc for persistence
+```
 
 ---
 

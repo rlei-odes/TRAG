@@ -5,6 +5,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.29] — 2026-04-16 · rlei-odes
+
+### Fixed — Markdown and Plain-Text Ingestion
+
+`MarkdownChunker._pdf2markdown` was missing `**kwargs`, causing all `.md` and `.txt` files to fail with `unexpected keyword argument 'do_ocr'` and produce 0 chunks. Added `**kwargs` to absorb PDF-specific parameters passed by the parent `make_chunks`.
+
+### Fixed — Reindex Proxy Timeout
+
+`POST /reindex` previously held the HTTP connection open until ingestion completed. The Next.js Flatpak proxy would time out on large KBs, returning a 500 to the frontend while the job continued silently in the backend.
+
+- `POST /reindex` now returns `{"started": true}` immediately; the job runs as a FastAPI background task
+- `last_result` added to `IndexStatus` and populated by `rebuild_callback` on completion
+- Frontend polling loop extended with `prevFinishedAt` detection (same pattern as the indexing progress modal) to show the success toast and refresh the KB registry when the job finishes
+
+---
+
 ## [TRAG v0.2.28] — 2026-04-14 · rlei-odes
 
 ### Added — Ingestion Deduplication

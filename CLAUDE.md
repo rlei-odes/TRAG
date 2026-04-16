@@ -48,8 +48,13 @@ Fork of the SDSC SME-KT-ZH Collaboration RAG, extended with multi-KB support, hy
 - **Embedding:** `local` — `nomic-ai/nomic-embed-text-v1` via SentenceTransformer (fully offline)
 - **Vector store:** ChromaDB (local, per-KB)
 - **Ports:** backend 8080, frontend 3000
+- **Python venv:** created with `python3.13` (explicit version — do not use generic `python3`)
 
 Ensure the model is pulled: `ollama pull mistral-nemo:12b`
+
+> **Venv maintenance:** If the system Python minor version changes (e.g. 3.13 → 3.14), the venv must be recreated:
+> `rm -rf .venv && python3.14 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
+> Update the version here and in `local_setup.md` when this happens.
 
 ---
 

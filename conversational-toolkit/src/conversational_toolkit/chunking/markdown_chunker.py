@@ -15,5 +15,6 @@ class MarkdownChunker(PDFChunker):
         engine: MarkdownConverterEngine = MarkdownConverterEngine.DOCLING,
         write_images: bool = False,
         image_path: str | None = None,
+        **kwargs,  # absorb PDF-specific params (e.g. do_ocr) passed by parent make_chunks
     ) -> str:
         return Path(file_path).read_text(encoding="utf-8")

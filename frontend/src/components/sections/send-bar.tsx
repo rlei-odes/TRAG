@@ -8,7 +8,7 @@ import { cn } from "@/lib/lorem";
 import { useMessaging } from "@/hooks/useMessaging";
 import { MessageTypes } from "@/services/message";
 
-const API_BASE = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:8080";
+const API_BASE = typeof window !== "undefined" ? "" : (process.env.SERVER_URL ?? "");
 
 // Strip common prefixes and extension from filenames for readable display
 function cleanFilename(filename: string): string {

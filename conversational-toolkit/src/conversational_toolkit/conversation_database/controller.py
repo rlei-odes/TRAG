@@ -90,7 +90,9 @@ class ConversationalToolkitController:
     async def register_user(self, user_id: str) -> User:
         return await self.user_db.create_user(User(id=user_id))
 
-    async def process_new_message(self, user_input: MessageInput, user_id: str, extra_meta: dict | None = None) -> ClientMessage:
+    async def process_new_message(
+        self, user_input: MessageInput, user_id: str, extra_meta: dict | None = None
+    ) -> ClientMessage:
         last_message = None
         async for message in self.process_new_message_stream(user_input, user_id, extra_meta=extra_meta):
             last_message = message
@@ -296,21 +298,27 @@ class ConversationalToolkitController:
         api_messages = []
         for message in sorted(messages, key=lambda m: m.create_timestamp):
             _meta = message.metadata or []
-            api_messages.append(ClientMessage(
-                id=message.id,
-                user_id=message.user_id,
-                conversation_id=message.conversation_id,
-                content=message.content,
-                role=message.role,
-                sources=await self.source_db.get_sources_by_message_id(message.id),
-                reaction=None,
-                follow_up_questions=[],
-                parent_id=message.parent_id,
-                create_timestamp=message.create_timestamp,
-                query_duration_ms=next((m.get("query_duration_ms") for m in reversed(_meta) if m.get("query_duration_ms")), None),
-                tokens_per_second=next((m.get("tokens_per_second") for m in reversed(_meta) if m.get("tokens_per_second")), None),
-                llm_model=next((m.get("model") for m in reversed(_meta) if m.get("model")), None),
-            ))
+            api_messages.append(
+                ClientMessage(
+                    id=message.id,
+                    user_id=message.user_id,
+                    conversation_id=message.conversation_id,
+                    content=message.content,
+                    role=message.role,
+                    sources=await self.source_db.get_sources_by_message_id(message.id),
+                    reaction=None,
+                    follow_up_questions=[],
+                    parent_id=message.parent_id,
+                    create_timestamp=message.create_timestamp,
+                    query_duration_ms=next(
+                        (m.get("query_duration_ms") for m in reversed(_meta) if m.get("query_duration_ms")), None
+                    ),
+                    tokens_per_second=next(
+                        (m.get("tokens_per_second") for m in reversed(_meta) if m.get("tokens_per_second")), None
+                    ),
+                    llm_model=next((m.get("model") for m in reversed(_meta) if m.get("model")), None),
+                )
+            )
 
         return ClientConversation(
             id=conversation.id,
@@ -377,8 +385,12 @@ class ConversationalToolkitController:
                 follow_up_questions=[],
                 parent_id=message.parent_id,
                 create_timestamp=message.create_timestamp,
-                query_duration_ms=next((m.get("query_duration_ms") for m in reversed(_meta) if m.get("query_duration_ms")), None),
-                tokens_per_second=next((m.get("tokens_per_second") for m in reversed(_meta) if m.get("tokens_per_second")), None),
+                query_duration_ms=next(
+                    (m.get("query_duration_ms") for m in reversed(_meta) if m.get("query_duration_ms")), None
+                ),
+                tokens_per_second=next(
+                    (m.get("tokens_per_second") for m in reversed(_meta) if m.get("tokens_per_second")), None
+                ),
                 llm_model=next((m.get("model") for m in reversed(_meta) if m.get("model")), None),
             )
 

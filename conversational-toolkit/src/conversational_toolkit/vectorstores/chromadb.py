@@ -58,12 +58,15 @@ class ChromaDBVectorStore(VectorStore):
         :param filters: Optional filters for metadata
         """
         import asyncio, logging as _log
+
         _log.getLogger("uvicorn").debug("chromadb: get_chunks_by_embedding START")
         loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(
             None, lambda: self.collection.query(query_embeddings=embedding.tolist(), n_results=top_k, where=filters)
         )  # type: ignore
-        _log.getLogger("uvicorn").debug(f"chromadb: get_chunks_by_embedding DONE, {len(results['ids'][0]) if results and results['ids'] else 0} results")
+        _log.getLogger("uvicorn").debug(
+            f"chromadb: get_chunks_by_embedding DONE, {len(results['ids'][0]) if results and results['ids'] else 0} results"
+        )
 
         chunk_matches = []
         if results and results["ids"]:
@@ -99,13 +102,16 @@ class ChromaDBVectorStore(VectorStore):
             }
         """
         import asyncio, logging as _log
+
         _log.getLogger("uvicorn").debug("chromadb: get_chunks_by_filter START")
         loop = asyncio.get_running_loop()
         if not filters:
             results = await loop.run_in_executor(None, self.collection.get)
         else:
             results = await loop.run_in_executor(None, lambda: self.collection.get(where=filters))  # type: ignore[arg-type]
-        _log.getLogger("uvicorn").debug(f"chromadb: get_chunks_by_filter DONE, {len(results['ids']) if results and results['ids'] else 0} results")
+        _log.getLogger("uvicorn").debug(
+            f"chromadb: get_chunks_by_filter DONE, {len(results['ids']) if results and results['ids'] else 0} results"
+        )
 
         chunk_records = []
         if results and results["ids"]:
@@ -130,28 +136,18 @@ class ChromaDBVectorStore(VectorStore):
     async def get_source_files(self) -> list[str]:
         """Return a sorted list of unique source file names (metadata-only fetch, no embeddings)."""
         import asyncio
+
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None, lambda: self.collection.get(include=["metadatas"])
-        )
-        return sorted({
-            m.get("source_file", "")
-            for m in (result.get("metadatas") or [])
-            if m and m.get("source_file")
-        })
+        result = await loop.run_in_executor(None, lambda: self.collection.get(include=["metadatas"]))
+        return sorted({m.get("source_file", "") for m in (result.get("metadatas") or []) if m and m.get("source_file")})
 
     async def get_file_hashes(self) -> set[str]:
         """Return the set of file_hash values present in this collection's chunk metadata."""
         import asyncio
+
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None, lambda: self.collection.get(include=["metadatas"])
-        )
-        return {
-            m["file_hash"]
-            for m in (result.get("metadatas") or [])
-            if m and "file_hash" in m
-        }
+        result = await loop.run_in_executor(None, lambda: self.collection.get(include=["metadatas"]))
+        return {m["file_hash"] for m in (result.get("metadatas") or []) if m and "file_hash" in m}
 
     async def get_chunks_by_ids(self, chunk_ids: int | list[int]) -> list[Chunk]:
         """

@@ -29,6 +29,7 @@ from conversational_toolkit.llms.base import LLMMessage, MessageContent, Roles
 
 # ─── Request / response models ────────────────────────────────────────────────
 
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -43,6 +44,7 @@ class ChatCompletionRequest(BaseModel):
 
 
 # ─── Router factory ───────────────────────────────────────────────────────────
+
 
 def create_openai_compat_router(agent) -> APIRouter:
     """
@@ -78,7 +80,12 @@ def create_openai_compat_router(agent) -> APIRouter:
             # system messages: ignored — agent uses its own system prompt
 
         if not query:
-            return {"error": {"message": "No user message found in messages.", "type": "invalid_request_error"}}
+            return {
+                "error": {
+                    "message": "No user message found in messages.",
+                    "type": "invalid_request_error",
+                }
+            }
 
         # Drop the last user message from history (it becomes the query)
         if history and history[-1].role == Roles.USER:
@@ -104,6 +111,7 @@ def create_openai_compat_router(agent) -> APIRouter:
 
         # ── Streaming response ─────────────────────────────────────────────
         if req.stream:
+
             async def event_stream() -> AsyncIterator[bytes]:
                 # Single content chunk
                 chunk = {

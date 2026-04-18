@@ -51,12 +51,15 @@ class LocalLLM(LLM):
         # Publish stats so the controller can include them in message metadata
         usage = completion.usage
         if usage and usage.completion_tokens and duration_s > 0:
-            MetadataProvider.add_metadata({
-                "model": self.display_name,
-                "tokens_per_second": round(usage.completion_tokens / duration_s, 1),
-            })
+            MetadataProvider.add_metadata(
+                {
+                    "model": self.display_name,
+                    "tokens_per_second": round(usage.completion_tokens / duration_s, 1),
+                }
+            )
 
         from conversational_toolkit.llms.base import MessageContent
+
         raw_content = completion.choices[0].message.content or ""
         return LLMMessage(
             content=[MessageContent(type="text", text=raw_content)],

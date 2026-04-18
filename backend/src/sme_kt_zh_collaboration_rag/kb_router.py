@@ -33,26 +33,29 @@ log = logging.getLogger("uvicorn")
 
 # ─── Data models ──────────────────────────────────────────────────────────────
 
+
 class KBCreate(BaseModel):
     """Fields the caller provides when creating or updating a KB."""
+
     name: str
     data_dirs: list[str] = Field(default_factory=lambda: ["data/"])
-    embedding_backend: str = "local"       # local | ollama | litellm | custom
+    embedding_backend: str = "local"  # local | ollama | litellm | custom
     embedding_model: str = "nomic-ai/nomic-embed-text-v1"
-    embedding_ollama_host: str = ""        # ollama: host:port (default localhost:11434)
-    embedding_custom_base_url: str = ""    # custom: OpenAI-compat base URL
-    embedding_custom_api_key: str = ""     # custom: API key
+    embedding_ollama_host: str = ""  # ollama: host:port (default localhost:11434)
+    embedding_custom_base_url: str = ""  # custom: OpenAI-compat base URL
+    embedding_custom_api_key: str = ""  # custom: API key
     nomic_prefix: bool = True
     max_file_size_mb: int = 20
     embedding_batch_size: int = 50
     pdf_ocr_enabled: bool = True
     max_chunk_tokens: int = 0
-    vs_type: str = "chromadb"            # "chromadb" | "pgvector"
-    vs_connection_string: str = ""       # used when vs_type == "pgvector"
+    vs_type: str = "chromadb"  # "chromadb" | "pgvector"
+    vs_connection_string: str = ""  # used when vs_type == "pgvector"
 
 
 class KBInfo(KBCreate):
     """Full KB record stored in the registry."""
+
     id: str
     vs_path: str
     chunks: int = 0
@@ -72,6 +75,7 @@ ActivateCallback = Callable[[KBInfo], Awaitable[None]]
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _slug(name: str, existing: set[str]) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "kb"
     slug, n = base, 2
@@ -82,6 +86,7 @@ def _slug(name: str, existing: set[str]) -> str:
 
 
 # ─── Router factory ───────────────────────────────────────────────────────────
+
 
 def create_kb_router(
     db_dir: Path,
@@ -230,9 +235,13 @@ def create_kb_router(
                 return FileResponse(
                     str(candidate),
                     filename=candidate.name,
-                    headers={"Content-Disposition": f'inline; filename="{candidate.name}"'},
+                    headers={
+                        "Content-Disposition": f'inline; filename="{candidate.name}"'
+                    },
                 )
 
-        raise HTTPException(404, f"File '{filename}' not found in any configured data directory")
+        raise HTTPException(
+            404, f"File '{filename}' not found in any configured data directory"
+        )
 
     return router

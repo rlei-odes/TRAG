@@ -100,7 +100,7 @@ DMS metadata models are complex and vary significantly between systems. A single
 
 TRAG defines the schema; the integration layer handles the transformation. This keeps the ingestion code simple and avoids building a configurable ETL engine inside the RAG system.
 
-**TRAG metadata schema (fixed, documented):**
+**TRAG metadata schema:**
 
 Sidecar file: `document.pdf.meta.json` alongside the file, or a JSON body field in the File Upload API request.
 
@@ -113,11 +113,14 @@ Sidecar file: `document.pdf.meta.json` alongside the file, or a JSON body field 
   "document_type": "Specification",
   "document_created_at": "2024-01-15",
   "document_released_at": "2025-03-01",
+  "source_url": "https://dms.example.com/documents/12345",
   "tags": ["project-x", "team-z"]
 }
 ```
 
 Only `document_id` is required for versioning. All other fields are optional and stored as chunk metadata. `document_released_at` serves as the version timestamp for stale-version detection. `document_class` is a category above `document_type` (e.g. Technical / Commercial / Legal / Internal) and is intended as a future retrieval filter — letting users scope answers to a specific document class.
+
+`source_url` is an optional deep link back to the document in the originating DMS or file system. When present, source citations in the answer should link directly to this URL rather than opening the current local content popup. When absent, fall back to the existing behaviour (filename link → content popup). Implementation: the `source://` URL handler in the frontend Markdown renderer checks the chunk's stored metadata for `source_url` and opens it in a new tab if available; the backend already stores all metadata fields on each chunk so no ingestion-side changes are needed beyond reading the field.
 
 **Document replacement (versioning):**
 
@@ -260,18 +263,6 @@ Also document in `local_setup.md` that after first run the system is designed to
 **Method:** run the backend with network access but with a local DNS proxy or `tcpdump` to capture all outbound DNS queries and HTTPS connections during startup, ingestion, and a query. Catalogue every external host contacted, the reason, and whether it can be suppressed.
 
 **Output:** a documented list in `local_setup.md` (or a dedicated `SECURITY.md`) of all external hosts, what triggers the call, and how to suppress it for air-gapped or privacy-sensitive deployments.
-
----
-
-## Housekeeping
-
-### Merge feature/ingestion-deduplication to main
-
-Currently on branch `feature/ingestion-deduplication`. Before merging:
-- [x] Dedup tested — incremental, new file, duplicate filename scenarios all pass
-- [x] Fire-and-forget reindex fix applied
-- [x] `MarkdownChunker` `do_ocr` bug fixed
-- [ ] Confirm Re-index ↺ (reset=True) behaviour with a clean store
 
 ---
 

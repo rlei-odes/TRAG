@@ -384,11 +384,13 @@ class _IndexingCancelled(Exception):
 # ---------------------------------------------------------------------------
 # Ingestion helper
 # ---------------------------------------------------------------------------
-async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
+async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
     """Chunk + embed all files in kb.data_dirs.
 
-    Returns (chunks_indexed, files_processed, files_skipped).
-    files_skipped counts files excluded by deduplication (already in store or
+    Returns (chunks_indexed, files_processed, files_skipped_store, files_skipped_batch).
+    files_skipped_store: already in vector store (cross-run dedup).
+    files_skipped_batch: duplicate content within the same run.
+    Originally returned a single files_skipped int; now split for finer reporting — see
     duplicate content within the same batch).
     """
     global _cancel_requested  # noqa: PLW0603
@@ -487,11 +489,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
         filtered_files, file_hashes_map, n_skipped_store, n_skipped_batch = \
             await loop.run_in_executor(None, _prepass)
 
-        n_skipped = n_skipped_store + n_skipped_batch
-
         if not filtered_files:
             log.info(f"All files already indexed for KB '{kb.name}' — nothing to embed.")
-            return 0, 0, n_skipped
+            return 0, 0, n_skipped_store, n_skipped_batch
 
         # Run blocking load_chunks in thread pool so event loop stays responsive.
         chunks = await loop.run_in_executor(
@@ -506,7 +506,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
         )
         if not chunks:
             log.warning(f"No chunks produced for KB '{kb.name}' — vector store unchanged.")
-            return 0, 0, n_skipped
+            return 0, 0, n_skipped_store, n_skipped_batch
 
         emb = build_embedding_model(kb.embedding_backend, kb.embedding_model, ollama_host=kb.embedding_ollama_host or "", custom_base_url=kb.embedding_custom_base_url or "", custom_api_key=kb.embedding_custom_api_key or "")
         _index_status["phase"] = "embedding"
@@ -551,7 +551,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int]:
             f"{n_skipped_store} skipped (already in store), "
             f"{n_skipped_batch} skipped (duplicate in batch)"
         )
-        return len(chunks), n_files, n_skipped
+        return len(chunks), n_files, n_skipped_store, n_skipped_batch
     except _IndexingCancelled:
         log.info("Indexing cancelled by user request.")
         return 0, 0, 0
@@ -696,9 +696,9 @@ def build_server():
         log.info(msg)
 
         async def _bg_ingest() -> None:
-            chunks_n, files_n, skipped_n = await _run_ingestion(active_kb, RESET_VS)
+            chunks_n, files_n, skipped_store_n, skipped_batch_n = await _run_ingestion(active_kb, RESET_VS)
             kb_router.update_stats(active_kb.id, chunks_n, files_n)
-            log.info(f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files ({skipped_n} skipped).")
+            log.info(f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files ({skipped_store_n} already in store, {skipped_batch_n} duplicate in batch).")
 
         asyncio.create_task(_bg_ingest())
         log.info("Auto-ingestion running in background — HTTP server is ready.")
@@ -713,7 +713,7 @@ def build_server():
         except Exception:
             kb = active_kb
 
-        chunks_n, files_n, skipped_n = await _run_ingestion(kb, reset)
+        chunks_n, files_n, skipped_store_n, skipped_batch_n = await _run_ingestion(kb, reset)
         kb_router.update_stats(kb.id, chunks_n, files_n)
 
         # Rebuild so BM25 re-indexes new content
@@ -724,7 +724,14 @@ def build_server():
         agent_proxy.switch(new_agent)
 
         from datetime import datetime, timezone
-        result = ReindexResult(chunks_indexed=chunks_n, files_processed=files_n, files_skipped=skipped_n, reset=reset)
+        result = ReindexResult(
+            chunks_indexed=chunks_n,
+            files_processed=files_n,
+            files_skipped=skipped_store_n + skipped_batch_n,
+            files_skipped_store=skipped_store_n,
+            files_skipped_batch=skipped_batch_n,
+            reset=reset,
+        )
         _index_status["last_result"] = result.model_dump()
         _index_status["finished_at"] = datetime.now(timezone.utc).isoformat()
         return result

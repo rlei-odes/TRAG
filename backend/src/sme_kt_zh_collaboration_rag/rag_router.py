@@ -65,7 +65,9 @@ class StoreInfo(BaseModel):
 class ReindexResult(BaseModel):
     chunks_indexed: int
     files_processed: int
-    files_skipped: int = 0
+    files_skipped: int = 0          # total skipped (store + batch), kept for backwards compat
+    files_skipped_store: int = 0    # already in vector store (cross-run dedup)
+    files_skipped_batch: int = 0    # duplicate content within the same run
     reset: bool
 
 

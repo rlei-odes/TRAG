@@ -23,6 +23,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 `Suggestions` component keyed suggestion cards by `suggestion.text`, which caused a React warning and potential rendering issues when two suggestions shared the same text (e.g. both using `"Summarise:"`). Changed to index-based keys.
 
+### Improved — Reindex Success Toast
+
+- Skip counts split into `files_skipped_store` (already in vector store) and `files_skipped_batch` (duplicate content within the same run); toast shows them separately when both are non-zero
+- Completion timestamp appended to the toast (e.g. "· 14:32")
+
+### Added — Re-index Confirmation Dialog
+
+The Re-index ↺ button (reset=True) now shows an inline confirmation dialog before proceeding. When the store is non-empty, the dialog displays the current chunk and file count ("This will permanently delete N chunks from M files…"). All four UI languages supported.
+
 ---
 
 ## [TRAG v0.2.29] — 2026-04-16 · rlei-odes

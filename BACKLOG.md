@@ -59,11 +59,9 @@ Currently all authenticated users share a single password and have full access t
 
 ### Reindex Success Toast — UX Improvements
 
-Small improvements to the success message shown in the RAG Config panel after indexing completes:
-
-- **Split skip counts:** `files_skipped` in `ReindexResult` currently combines cross-run skips and within-batch duplicate skips into one number. Split into `files_skipped_store` and `files_skipped_batch` so the toast can show e.g. "38 already up to date, 1 duplicate skipped" when both occur.
-- **Timestamp:** show the completion time in the toast (the `finished_at` value is already available in the status response).
-- **Auto-dismiss vs. persistent:** ingestion typically runs for minutes, so the user has likely left the window by the time it finishes. Showing a persistent result (rather than auto-dismissing after 8 s) may actually be better UX — the user comes back and can see what happened. Consider showing a relative timestamp ("finished 3 minutes ago") instead of auto-dismissing, so the result stays visible but still conveys when it happened.
+- ~~**Split skip counts**~~ ✓ done — `files_skipped_store` and `files_skipped_batch` now separate fields in `ReindexResult`; toast shows e.g. "38 already up to date, 1 duplicate in batch"
+- ~~**Timestamp**~~ ✓ done — completion time appended to toast ("· 14:32")
+- **Auto-dismiss vs. persistent:** left as-is for now — current behaviour is acceptable.
 
 ### Image Parsing in Documents
 
@@ -78,27 +76,77 @@ Small improvements to the success message shown in the RAG Config panel after in
 
 ### File Upload API + Incremental Indexing
 
-**Goal:** allow external tools (n8n, Make, custom scripts) to push a document directly into a KB via API, without requiring filesystem access or a full reindex.
+**Goal:** allow external tools (n8n, Make, custom scripts, DMS webhooks) to push a document directly into a KB via API, without requiring filesystem access or a full reindex.
 
 **Scope:**
-- `POST /api/v1/kb/{id}/documents` — accepts a file upload, writes it to the KB's data directory, and queues it for indexing
+- `POST /api/v1/kb/{id}/documents` — accepts a file upload plus optional metadata (document_id, version, source system); writes it to the KB's data directory and queues it for indexing
 - Requires incremental indexing to be solved first: currently `build_vector_store()` either resets fully or skips entirely — per-document content-hash deduplication must be in place for single-file ingest to be meaningful
 - File upload endpoint should return a job ID that can be polled via the existing reindex-status endpoint
+- Natural webhook target for DMS release/approval events — see Metadata & Versioning below
 
-**Why:** closes the loop for automation use cases — the `/v1/chat/completions` endpoint already allows querying the RAG from external tools; this adds the ability to feed documents in from the same tools. Also resolves the known issue of incremental indexing.
+**Why:** closes the loop for automation use cases — the `/v1/chat/completions` endpoint already allows querying the RAG from external tools; this adds the ability to feed documents in from the same tools. Combined with metadata and versioning support, enables a fully automated DMS → RAG pipeline.
 
-### Customisable Retrieval Prompts
+### External Metadata Ingestion & Document Versioning
 
-The query expansion, HyDE, and reranking prompts are currently hardcoded in Python. Unlike the system prompt (answer tone/format), these affect retrieval quality and could benefit from domain-specific tuning.
+**Context:** enterprise DMS solutions (SharePoint, Alfresco, OpenText, etc.) attach structured metadata to files — author, department, document type, validity date, status, project ID. This metadata is useful for retrieval attribution and filtering, but is not captured by the current file-based ingestion pipeline. A related problem is document replacement: when a new version or approved revision of a document is available, the old chunks in the vector store should be removed.
 
-**Candidates:**
-- **Query expansion** (`utils/retriever.py`) — could guide rephrasing toward domain vocabulary (e.g. industry terminology, local acronyms)
-- **HyDE** (`utils/retriever.py`) — hypothetical document generation; domain context improves embedding match quality
-- **LLM reranking** (`retriever/reranking_retriever.py`) — could define what "relevant" means for the specific corpus (e.g. prioritise verified sources over marketing material)
+**Scope boundary — what TRAG does and does not own:**
 
-**Scope:** same file-based pattern as the system prompt — `prompts/query_expansion.default.md`, `prompts/hyde.default.md`, `prompts/reranking.default.md`, each with a gitignored `.custom.md` override. Admin-only UI exposure makes sense given the technical nature.
+DMS metadata models are complex and vary significantly between systems. A single DMS may distinguish between versions (any change) and revisions (approved changes), use different field names for status, and apply custom approval workflows. Building a UI for field mapping, version/revision logic interpretation, and status filtering inside TRAG would turn it into a DMS integration platform — that is out of scope.
 
-**Why:** hardcoded prompts cannot be tuned without touching source code; domain-specific guidance measurably improves retrieval recall and precision.
+**The responsibility split:**
+- **Integration layer** (customer script, n8n, webhook): reads DMS metadata, applies any required filtering (e.g. only status=Released), maps DMS field names to TRAG's fixed schema, and delivers the file + metadata to TRAG
+- **TRAG**: accepts the file and the pre-mapped metadata, stamps it onto chunks, and handles replacement using the `document_id` it is given
+
+TRAG defines the schema; the integration layer handles the transformation. This keeps the ingestion code simple and avoids building a configurable ETL engine inside the RAG system.
+
+**TRAG metadata schema (fixed, documented):**
+
+Sidecar file: `document.pdf.meta.json` alongside the file, or a JSON body field in the File Upload API request.
+
+```json
+{
+  "document_id": "stable-uid-from-dms",
+  "title": "Human-readable document title",
+  "author": "Name or department",
+  "document_class": "Technical",
+  "document_type": "Specification",
+  "document_created_at": "2024-01-15",
+  "document_released_at": "2025-03-01",
+  "tags": ["project-x", "team-z"]
+}
+```
+
+Only `document_id` is required for versioning. All other fields are optional and stored as chunk metadata. `document_released_at` serves as the version timestamp for stale-version detection. `document_class` is a category above `document_type` (e.g. Technical / Commercial / Legal / Internal) and is intended as a future retrieval filter — letting users scope answers to a specific document class.
+
+**Document replacement (versioning):**
+
+- `VectorStore.delete_chunks_by_document_id(document_id)` — new abstract method, implemented for ChromaDB (metadata filter delete) and pgvector (DELETE WHERE clause)
+- Ingestion pipeline: when a file carries a `document_id` that already exists in the store, delete the old chunks before adding the new ones
+- `ReindexResult` extended with `files_updated` count (replacements) alongside existing skip counts
+- Reindex toast updated: N added / N updated / N skipped
+
+**Stale version protection:**
+
+The integration layer (webhook/script) is stateless — it cannot know whether a newer version of a document is already in the store. Two complementary mechanisms:
+
+- `GET /api/v1/kb/{id}/documents/{document_id}` — returns the current metadata stored for that document_id (title, `document_released_at`, chunk count), or 404 if not present. The caller can compare `document_released_at` values and abort if the stored version is already newer.
+- Optional version guard on the upload endpoint: accept an `if_released_after` parameter; if the stored `document_released_at` is equal to or newer, TRAG returns 409 Conflict with the stored metadata. This keeps the guard logic server-side and avoids requiring a pre-check round-trip.
+
+**Document invalidation (explicit deletion):**
+
+When a document is withdrawn or put out of validation in the DMS, the integration layer calls:
+
+`DELETE /api/v1/kb/{id}/documents/{document_id}` — removes all chunks for that document_id from the vector store. Returns 404 if not found, 200 with a count of chunks removed otherwise.
+
+This is the correct primitive for the "document no longer valid" use case. TRAG does not automatically expire documents based on timestamps — the DMS workflow owns that decision and calls the delete endpoint explicitly.
+
+**What is explicitly out of scope for TRAG:**
+- UI for selecting or mapping metadata fields from an uploaded sample JSON
+- Interpretation of version vs. revision semantics (the integration layer decides what counts as a replacement)
+- Status-based filtering at ingestion time (filter at the DMS export / webhook level)
+- Automatic time-based expiry of documents based on metadata timestamps
+- Direct DMS API or database connectivity (DMS-specific, belongs in the integration layer)
 
 ---
 
@@ -141,6 +189,22 @@ Two sub-views in the main area, selectable by toggle or tabs: chunk browser and 
 Each result is a card with a large rank number on the left (bold, prominent), then the chunk content and scores. The list shows **k + y** results total, where k is the current configured cutoff and y is a configurable lookahead (e.g. +5). The first k cards render normally; the remaining y cards are visually dimmed — lower opacity, maybe a subtle "outside k" label — so you can see exactly what the RAG would discard. This makes the effect of changing k immediately legible: raise k by 2 and two grayed cards become active.
 
 **Scope note:** the UI cards are non-trivial but not complex — a ranked list with expandable text. Generic vector store UIs (ChromaDB-UI etc.) don't know about the BM25/RRF pipeline, so building this in-app is the only way to get the full picture.
+
+
+
+### Customisable Retrieval Prompts
+
+The query expansion, HyDE, and reranking prompts are currently hardcoded in Python. Unlike the system prompt (answer tone/format), these affect retrieval quality and could benefit from domain-specific tuning.
+
+**Candidates:**
+- **Query expansion** (`utils/retriever.py`) — could guide rephrasing toward domain vocabulary (e.g. industry terminology, local acronyms)
+- **HyDE** (`utils/retriever.py`) — hypothetical document generation; domain context improves embedding match quality
+- **LLM reranking** (`retriever/reranking_retriever.py`) — could define what "relevant" means for the specific corpus (e.g. prioritise verified sources over marketing material)
+
+**Scope:** same file-based pattern as the system prompt — `prompts/query_expansion.default.md`, `prompts/hyde.default.md`, `prompts/reranking.default.md`, each with a gitignored `.custom.md` override. Admin-only UI exposure makes sense given the technical nature.
+
+**Why:** hardcoded prompts cannot be tuned without touching source code; domain-specific guidance measurably improves retrieval recall and precision.
+
 
 ---
 

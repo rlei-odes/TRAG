@@ -35,6 +35,7 @@ chunks.db/
 rag_venv/
 db/
 images_unstructured_pdf/
+tmp/
 
 node_modules/
 .next/

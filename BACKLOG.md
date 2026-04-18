@@ -36,8 +36,10 @@ Currently all authenticated users share a single password and have full access t
 - Add an admin flag to the session (e.g. a separate admin password or a role field in the auth cookie)
 - Hide the RAG Config panel from non-admin sessions
 - Hide or lock: reindex buttons, model selectors, system prompt editor, embedding configuration, vector store settings, preset create/delete
+- **Stop indexing button** (red, in the sidebar progress bar) — admin-only; end users should see the progress indicator but not be able to cancel a running indexing job
 - End users retain: chat, conversation history, language toggle, theme toggle
 - No per-user accounts required at this stage — two passwords (user / admin) is sufficient for the prototype
+- **Fallback admin account** — a local admin credential (env var or config file) that works independently of SSO/AD, so the system is never locked out if the directory is unreachable; required before SSO integration is attempted
 
 **Why:** prototype rollout to a small trusted team is fine without this, but broader internal use requires that non-technical users cannot accidentally break the configuration or trigger a full reindex.
 

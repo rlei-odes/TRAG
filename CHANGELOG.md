@@ -5,7 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [TRAG v0.2.29+] — 2026-04-16 · rlei-odes
+## [TRAG v0.2.29] — 2026-04-18 · rlei-odes
 
 ### Fixed — Answer Disappears After Streaming
 

@@ -1,4 +1,3 @@
-import hashlib
 from abc import ABC
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -6,7 +5,11 @@ from jose import JWTError, jwt  # type: ignore[import-untyped]
 
 from conversational_toolkit.api.auth.base import AuthProvider
 from conversational_toolkit.conversation_database.controller import ConversationalToolkitController
-from conversational_toolkit.utils.database import generate_uid
+
+# Upstream used dynamic per-user IDs (hashlib + generate_uid). Replaced with a
+# fixed "admin" user for single-user deployments. Re-introduce for SSO/AD integration.
+# import hashlib
+# from conversational_toolkit.utils.database import generate_uid
 
 
 class SessionCookieProvider(AuthProvider, ABC):

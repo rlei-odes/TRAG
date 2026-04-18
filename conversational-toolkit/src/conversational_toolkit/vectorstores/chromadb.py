@@ -57,7 +57,8 @@ class ChromaDBVectorStore(VectorStore):
         :param top_k: Number of results to return
         :param filters: Optional filters for metadata
         """
-        import asyncio, logging as _log
+        import asyncio
+        import logging as _log
 
         _log.getLogger("uvicorn").debug("chromadb: get_chunks_by_embedding START")
         loop = asyncio.get_running_loop()
@@ -101,7 +102,8 @@ class ChromaDBVectorStore(VectorStore):
                 ]
             }
         """
-        import asyncio, logging as _log
+        import asyncio
+        import logging as _log
 
         _log.getLogger("uvicorn").debug("chromadb: get_chunks_by_filter START")
         loop = asyncio.get_running_loop()

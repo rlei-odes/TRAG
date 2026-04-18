@@ -10,7 +10,10 @@ extend-select = [
     "RUF",  # Ruff-specific rules
 ]
 ignore = [
-    "PGH003", # allow blanket type: ignore comments
+    "PGH003",   # allow blanket type: ignore comments
+    "E402",     # module-level import not at top — intentional: .env loaded before third-party imports
+    "PLC0415",  # import not at top-level — intentional lazy imports in async methods
+    "E401",     # multiple imports on one line — handled per-file in conversational-toolkit
 ]
 
 [tool.ruff.lint.per-file-ignores]

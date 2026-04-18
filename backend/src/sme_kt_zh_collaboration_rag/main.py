@@ -30,7 +30,6 @@ KB API:
 """
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -38,7 +37,6 @@ import pathlib
 import re
 from collections import Counter
 from pathlib import Path
-from textwrap import dedent
 from typing import Any
 
 # Load litellm.env from project root if LITELLM env vars are not set via systemd
@@ -52,7 +50,6 @@ if _litellm_env.exists():
                 os.environ[_k.strip()] = _v.strip()
 
 import uvicorn
-from loguru import logger
 
 from conversational_toolkit.agents.base import AgentAnswer
 from conversational_toolkit.agents.rag import RAG
@@ -442,7 +439,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
     Originally returned a single files_skipped int; now split for finer reporting — see
     duplicate content within the same batch).
     """
-    global _cancel_requested  # noqa: PLW0603
+    global _cancel_requested
     _cancel_requested = False
     _index_status.update(
         {
@@ -825,7 +822,7 @@ def build_server():
                 f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files ({skipped_store_n} already in store, {skipped_batch_n} duplicate in batch)."
             )
 
-        asyncio.create_task(_bg_ingest())
+        asyncio.create_task(_bg_ingest())  # noqa: RUF006
         log.info("Auto-ingestion running in background — HTTP server is ready.")
 
     app.add_event_handler("startup", _startup)

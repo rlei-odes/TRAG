@@ -15,7 +15,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, Callable
+from typing import Annotated, Callable
 
 _SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
 

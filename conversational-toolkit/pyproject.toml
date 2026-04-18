@@ -46,9 +46,10 @@ extend-select = [
     "RUF", # Ruff-specific rules
 ]
 ignore = [
-    "NPY002", # numpy-legacy-random
-    "PGH003", # type ignore for mypy
-    "PLR0913", # too many arguments (common in class __init__ signatures)
+    "NPY002",   # numpy-legacy-random
+    "PGH003",   # type ignore for mypy
+    "PLR0913",  # too many arguments (common in class __init__ signatures)
+    "PLC0415",  # import not at top-level — intentional lazy imports in async methods
 ]
 
 [tool.ruff.lint.per-file-ignores]

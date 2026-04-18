@@ -19,7 +19,7 @@ from typing import Annotated, Any, Callable
 
 _SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
 from pydantic import BaseModel, Field
 
 log = logging.getLogger("uvicorn")
@@ -65,6 +65,9 @@ class StoreInfo(BaseModel):
 class ReindexResult(BaseModel):
     chunks_indexed: int
     files_processed: int
+    files_skipped: int = 0          # total skipped (store + batch), kept for backwards compat
+    files_skipped_store: int = 0    # already in vector store (cross-run dedup)
+    files_skipped_batch: int = 0    # duplicate content within the same run
     reset: bool
 
 
@@ -79,6 +82,7 @@ class IndexStatus(BaseModel):
     embed_total_batches: int = 0
     kb_name: str = ""             # name of the KB being indexed
     finished_at: str = ""         # ISO timestamp set when indexing completes
+    last_result: ReindexResult | None = None  # result of the last completed reindex
 
 
 # ─── Router factory ───────────────────────────────────────────────────────────
@@ -191,16 +195,19 @@ def create_rag_router(
         path.write_text(json.dumps(presets, indent=2))
         return {"saved": len(presets)}
 
-    @router.post("/reindex", response_model=ReindexResult)
-    async def reindex(req: ReindexRequest) -> ReindexResult:
-        """Trigger ingestion/reindex on the active Knowledge Base."""
+    @router.post("/reindex")
+    async def reindex(req: ReindexRequest, background_tasks: BackgroundTasks) -> dict:
+        """Trigger ingestion/reindex on the active Knowledge Base.
+
+        Returns immediately — the job runs in the background. Poll
+        GET /reindex-status for progress; last_result carries the final counts.
+        """
         if status_factory is not None and status_factory().get("indexing"):
             raise HTTPException(status_code=409, detail="Indexierung läuft bereits. Bitte warten.")
         cfg = _load_config()
         log.info(f"Reindex requested: reset={req.reset}")
-        result = await rebuild_callback(cfg, req.reset)
-        log.info(f"Reindex complete: {result.chunks_indexed} chunks from {result.files_processed} files")
-        return result
+        background_tasks.add_task(rebuild_callback, cfg, req.reset)
+        return {"started": True}
 
     @router.post("/reindex-cancel")
     async def reindex_cancel() -> dict:

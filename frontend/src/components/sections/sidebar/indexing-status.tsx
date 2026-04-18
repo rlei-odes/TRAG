@@ -15,7 +15,8 @@ interface IndexStatus {
     embed_batch: number;
     embed_total_batches: number;
     kb_name: string;
-    finished_at: string; // ISO timestamp, set when done
+    finished_at: string;
+    last_result?: { reset: boolean } | null;
 }
 
 export const IndexingStatus: FunctionComponent = () => {
@@ -134,11 +135,16 @@ export const IndexingStatus: FunctionComponent = () => {
     // Show done banner briefly after completion
     if (showDone && status?.finished_at) {
         const time = new Date(status.finished_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const kbLabel = status.kb_name ? ` ${status.kb_name}` : "";
+        const kbLabel = status.kb_name ? ` · ${status.kb_name}` : "";
+        const doneKey = status.last_result?.reset === true
+            ? "rag.indexingDoneFull"
+            : status.last_result?.reset === false
+                ? "rag.indexingDoneIncremental"
+                : "rag.indexingDone";
         return (
             <div className="mx-2 mb-1 px-3 py-2 rounded-md bg-green-950/60 border border-green-800/50 text-xs text-green-200 flex items-center gap-1.5">
                 <CheckCircle2 className="h-3 w-3 shrink-0 text-green-400" />
-                <span>{t("rag.indexingDone", { kb: kbLabel ? ` ${kbLabel}` : "", time })}</span>
+                <span>{t(doneKey, { kb: kbLabel, time })}</span>
             </div>
         );
     }

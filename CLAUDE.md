@@ -1,4 +1,59 @@
-# CLAUDE.md — Agent Instructions for TRAG
+# CLAUDE.md — Agent Instructions general Instructions
+
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
 
 ## Language
 
@@ -16,6 +71,10 @@ Use emojis sparingly. Avoid them in commit messages, PR descriptions, and docume
 - Keep all content professional and focused on the task
 
 ---
+
+
+
+# CLAUDE.md — Agent Instructions specific for this Project
 
 ## Project Overview
 
@@ -48,8 +107,13 @@ Fork of the SDSC SME-KT-ZH Collaboration RAG, extended with multi-KB support, hy
 - **Embedding:** `local` — `nomic-ai/nomic-embed-text-v1` via SentenceTransformer (fully offline)
 - **Vector store:** ChromaDB (local, per-KB)
 - **Ports:** backend 8080, frontend 3000
+- **Python venv:** created with `python3.13` (explicit version — do not use generic `python3`)
 
 Ensure the model is pulled: `ollama pull mistral-nemo:12b`
+
+> **Venv maintenance:** If the system Python minor version changes (e.g. 3.13 → 3.14), the venv must be recreated:
+> `rm -rf .venv && python3.14 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
+> Update the version here and in `local_setup.md` when this happens.
 
 ---
 
@@ -163,6 +227,8 @@ chore(scripts): rewrite start.sh for local portability
 ---
 
 ## Commit and Push Workflow
+
+This is currently a solo fork — committing directly to `main` is fine for day-to-day work and small improvements. Use a feature branch when a change is large, experimental, or spans multiple sessions where incomplete code would be disruptive on `main`.
 
 1. Make the changes
 2. Describe to the user what was changed and why

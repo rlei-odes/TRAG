@@ -297,9 +297,8 @@ Key design features of the dataset:
 | # | Issue | Priority |
 |---|---|---|
 | 1 | Images and tables not extracted from PDFs | High |
-| 2 | Incremental indexing not implemented — adding a new document to an existing KB requires a full reset reindex | Medium |
-| 3 | pgvector: connection instability on LAN (no fallback to ChromaDB) | Medium |
-| 4 | Mobile layout: RAG Config Panel always visible | Low |
+| 2 | pgvector: connection instability on LAN (no fallback to ChromaDB) | Medium |
+| 3 | Mobile layout: RAG Config Panel always visible | Low |
 
 ---
 

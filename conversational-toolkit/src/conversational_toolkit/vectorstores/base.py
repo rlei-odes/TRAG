@@ -69,3 +69,13 @@ class VectorStore(ABC):
     async def get_source_files(self) -> list[str]:
         """Return a sorted list of unique source file names stored in this vector store."""
         pass
+
+    @abstractmethod
+    async def get_file_hashes(self) -> set[str]:
+        """Return the set of file_hash values present in this collection's chunk metadata.
+
+        Used by the ingestion pre-pass to skip files whose content is already indexed.
+        Returns an empty set if no chunks carry a file_hash (e.g. collections indexed
+        before deduplication was introduced).
+        """
+        pass

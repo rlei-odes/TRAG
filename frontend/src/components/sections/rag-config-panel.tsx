@@ -353,6 +353,8 @@ export const RagConfigPanel: FunctionComponent = () => {
     const [status, setStatus] = useState<StatusMessage>({ type: "idle", text: "" });
     const [kbForm, setKbForm] = useState<"create" | "edit" | null>(null);
     const [isIndexing, setIsIndexing] = useState(false);
+    const prevFinishedAt = useRef<string>("");
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
 
     // LiteLLM dynamic model list
     const [litellmModels, setLitellmModels] = useState<string[]>([]);
@@ -517,13 +519,31 @@ export const RagConfigPanel: FunctionComponent = () => {
                 if (r.ok && active) {
                     const d = await r.json();
                     setIsIndexing(!!d.indexing);
+                    // Detect completion: same pattern as indexing-status.tsx
+                    if (!d.indexing && d.finished_at && d.finished_at !== prevFinishedAt.current) {
+                        prevFinishedAt.current = d.finished_at;
+                        if (d.last_result) {
+                            const { chunks_indexed, files_processed, files_skipped_store, files_skipped_batch } = d.last_result;
+                            const skippedStore: number = files_skipped_store ?? 0;
+                            const skippedBatch: number = files_skipped_batch ?? 0;
+                            const skipParts: string[] = [];
+                            if (skippedStore > 0) skipParts.push(`${skippedStore} ${t("rag.skipReasonStore")}`);
+                            if (skippedBatch > 0) skipParts.push(`${skippedBatch} ${t("rag.skipReasonBatch")}`);
+                            const finishedTime = new Date(d.finished_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                            const base = skipParts.length > 0
+                                ? t("rag.statusIndexedWithSkips", { chunks: chunks_indexed, files: files_processed, skipped: skipParts.join(", ") })
+                                : t("rag.statusIndexed", { chunks: chunks_indexed, files: files_processed });
+                            setStatus({ type: "success", text: `${base} · ${finishedTime}` });
+                            await fetchKbRegistry();
+                        }
+                    }
                 }
             } catch { /* ignore */ }
         };
         poll();
         const id = setInterval(poll, 3000);
         return () => { active = false; clearInterval(id); };
-    }, []);
+    }, [t, fetchKbRegistry]);
 
     useEffect(() => { if (showSaveAs) saveAsRef.current?.focus(); }, [showSaveAs]);
 
@@ -700,15 +720,13 @@ export const RagConfigPanel: FunctionComponent = () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ reset }),
             });
-            if (r.ok) {
-                const data = await r.json();
-                setStatus({ type: "success", text: t("rag.statusIndexed", { chunks: data.chunks_indexed, files: data.files_processed }) });
-                await fetchKbRegistry();
-            } else if (r.status === 409) {
+            // POST returns immediately with {"started": true} — result arrives via polling
+            if (r.status === 409) {
                 setStatus({ type: "error", text: t("rag.statusAlreadyIndexing") });
-            } else {
+            } else if (!r.ok) {
                 setStatus({ type: "error", text: t("rag.statusError", { code: r.status }) });
             }
+            // On success: keep loading state; polling loop will set success when finished_at changes
         } catch { setStatus({ type: "error", text: t("rag.statusConnError") }); }
     };
 
@@ -1284,7 +1302,7 @@ export const RagConfigPanel: FunctionComponent = () => {
                         {isIndexing ? <span className="flex items-center justify-center gap-1"><Loader2 size={10} className="animate-spin" />{t("rag.btnIndexing")}</span> : t("rag.btnIncrementalIndex")}
                     </button>
                     <button
-                        onClick={() => reindex(true)}
+                        onClick={() => setShowResetConfirm(true)}
                         disabled={status.type === "loading" || isIndexing}
                         title={isIndexing ? t("rag.btnAlreadyIndexingTitle") : t("rag.btnReindexTitle")}
                         className="flex-1 text-xs py-1.5 rounded font-medium bg-amber-700/60 hover:bg-amber-600/70 text-amber-200 transition-colors disabled:opacity-40"
@@ -1292,6 +1310,30 @@ export const RagConfigPanel: FunctionComponent = () => {
                         {t("rag.btnReindex")}
                     </button>
                 </div>
+                {showResetConfirm && (
+                    <div className="rounded border border-amber-600/50 bg-amber-950/40 p-3 text-xs space-y-2">
+                        <p className="text-amber-200 font-medium">{t("rag.resetConfirmTitle")}</p>
+                        <p className="text-amber-200/70">
+                            {activeKb && activeKb.chunks > 0
+                                ? t("rag.resetConfirmBodyWithChunks", { chunks: activeKb.chunks, files: activeKb.files })
+                                : t("rag.resetConfirmBody")}
+                        </p>
+                        <div className="flex gap-2 pt-1">
+                            <button
+                                onClick={() => { setShowResetConfirm(false); reindex(true); }}
+                                className="flex-1 py-1 rounded bg-amber-700 hover:bg-amber-600 text-amber-100 font-medium transition-colors"
+                            >
+                                {t("rag.resetConfirmOk")}
+                            </button>
+                            <button
+                                onClick={() => setShowResetConfirm(false)}
+                                className="flex-1 py-1 rounded bg-muted hover:bg-accent/20 text-foreground transition-colors"
+                            >
+                                {t("rag.resetConfirmCancel")}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

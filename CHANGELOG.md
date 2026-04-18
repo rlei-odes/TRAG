@@ -5,6 +5,70 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.29+] — 2026-04-16 · rlei-odes
+
+### Fixed — Answer Disappears After Streaming
+
+`mistral-nemo:12b` emits literal newlines inside JSON string values, which is invalid JSON. `partial_json_loads` returned `{}`, the `"answer"` key was missing, and the DB record was saved as empty — causing the streamed answer to vanish when the frontend refreshed from the DB.
+
+- `_escape_literal_newlines()` added to `utils/json.py` — walks the JSON character-by-character and escapes bare `\n`/`\r` inside string values before parsing
+- `parse_llm_json_stream` now catches all exceptions from `partial_json_loads`, not only `ValueError`
+- `_answer_post_processing` in `main.py` falls back to the raw accumulated text when the `"answer"` key cannot be extracted, preventing silent data loss
+
+### Fixed — CORS Errors from Footer and SendBar
+
+`footer.tsx` and `send-bar.tsx` used `process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:8080"` as API base, causing direct browser requests instead of routing through the Next.js proxy. Changed to `typeof window !== "undefined" ? "" : (process.env.SERVER_URL ?? "")`, matching the pattern used by all other components.
+
+### Fixed — Duplicate React Key in Suggestions
+
+`Suggestions` component keyed suggestion cards by `suggestion.text`, which caused a React warning and potential rendering issues when two suggestions shared the same text (e.g. both using `"Summarise:"`). Changed to index-based keys.
+
+### Improved — Reindex Success Toast
+
+- Skip counts split into `files_skipped_store` (already in vector store) and `files_skipped_batch` (duplicate content within the same run); toast shows them separately when both are non-zero
+- Completion timestamp appended to the toast (e.g. "· 14:32")
+
+### Added — Re-index Confirmation Dialog
+
+The Re-index ↺ button (reset=True) now shows an inline confirmation dialog before proceeding. When the store is non-empty, the dialog displays the current chunk and file count ("This will permanently delete N chunks from M files…"). All four UI languages supported.
+
+---
+
+## [TRAG v0.2.29] — 2026-04-16 · rlei-odes
+
+### Fixed — Markdown and Plain-Text Ingestion
+
+`MarkdownChunker._pdf2markdown` was missing `**kwargs`, causing all `.md` and `.txt` files to fail with `unexpected keyword argument 'do_ocr'` and produce 0 chunks. Added `**kwargs` to absorb PDF-specific parameters passed by the parent `make_chunks`.
+
+### Fixed — Reindex Proxy Timeout
+
+`POST /reindex` previously held the HTTP connection open until ingestion completed. The Next.js Flatpak proxy would time out on large KBs, returning a 500 to the frontend while the job continued silently in the backend.
+
+- `POST /reindex` now returns `{"started": true}` immediately; the job runs as a FastAPI background task
+- `last_result` added to `IndexStatus` and populated by `rebuild_callback` on completion
+- Frontend polling loop extended with `prevFinishedAt` detection (same pattern as the indexing progress modal) to show the success toast and refresh the KB registry when the job finishes
+
+---
+
+## [TRAG v0.2.28] — 2026-04-14 · rlei-odes
+
+### Added — Ingestion Deduplication
+
+Content-hash based deduplication prevents redundant parsing and embedding when the same
+file is encountered more than once, either across runs or within a single batch.
+
+- `file_hash()` — SHA-256 fingerprint of raw file bytes; content-based, filename-agnostic
+- `_collect_candidate_files()` — shared helper for file discovery (extension, size, EVALUATION filter), used by both the dedup pre-pass and `load_chunks`
+- Pre-pass in `_run_ingestion`: hashes all candidate files in an executor before parsing; applies cross-run dedup (skip if hash already in store) and within-batch dedup (skip duplicate content in the same run); only files that pass both checks reach `load_chunks`
+- `load_chunks` gains `include_files` and `file_hashes` params; stamps every chunk with `chunk.metadata["file_hash"]` for future lookups; falls back to on-the-fly hashing when called standalone (notebook compatible)
+- `build_vector_store` removes the all-or-nothing `current_count > 0` guard (which silently skipped new files on incremental runs); groups chunks by `file_hash`, skips groups already in the store; accepts `existing_hashes` from caller to avoid a second full metadata scan
+- `VectorStore.get_file_hashes()` — new abstract method; implemented in `ChromaDBVectorStore` (metadata-only scan via `run_in_executor`) and `PGVectorStore` (DISTINCT SQL on `chunk_metadata["file_hash"]`)
+- `ReindexResult` gains `files_skipped` field; success toast in all four UI languages shows skipped count when non-zero
+- Warning logged when a store is non-empty but has no `file_hash` metadata (KB indexed before this feature; first incremental run re-embeds everything, subsequent runs are incremental)
+- `ARCHITECTURE.md`: new Ingestion Pipeline chapter documenting the full flow, dedup layers, key functions, and threading model
+
+---
+
 ## [TRAG v0.2.27] — 2026-04-13 · rlei-odes
 
 ### Added — Project Tooling
@@ -143,7 +207,7 @@ This release represents the full TRAG production stack on top of the SDSC baseli
 
 ---
 
-## [Upstream Baseline] — 2026-03
+## [Upstream Baseline] — 2026-03 · SDSC
 
 Notebook material reviewed and finalized by Paulina Koerner (SDSC):
 - All feature notebooks (`feature0a` through `feature4e`) reviewed and corrected
@@ -164,4 +228,3 @@ Original baseline implemented by the Swiss Data Science Center (SDSC):
 
 ---
 
-*Vonlanthen INSIGHT · https://www.vonlanthen.tv*

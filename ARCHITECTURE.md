@@ -61,6 +61,101 @@ new KB immediately. No re-init, no restart.
 A `_cancel_requested` global flag enables mid-indexing cancellation. The endpoint returns
 a 409 if indexing is already running.
 
+### Ingestion Pipeline
+
+Ingestion converts documents on disk into embedded chunks stored in the vector store.
+It is triggered by `POST /api/v1/rag/reindex` or automatically on startup when the
+store is empty.
+
+#### Flow
+
+```
+POST /reindex (reset: bool)
+  │
+  ├── _run_ingestion(kb, reset)               main.py
+  │     │
+  │     ├── make_vector_store(...)             create VS instance in async context
+  │     │     (ChromaDB: reused below;
+  │     │      PGVector: new instance per thread — AsyncEngine is loop-bound)
+  │     │
+  │     ├── [if not reset] vs.get_file_hashes()
+  │     │     returns set[SHA-256] already in the store
+  │     │     warns if store is non-empty but has no hashes (pre-dedup KB)
+  │     │
+  │     ├── executor: _prepass()               blocking I/O — thread pool
+  │     │     ├── _collect_candidate_files()   extension + size + EVALUATION filter
+  │     │     ├── file_hash(path) × N          SHA-256 of raw bytes, one per file
+  │     │     ├── cross-run dedup              skip if hash in existing_hashes
+  │     │     └── within-batch dedup           skip if hash already seen this run
+  │     │                                      (add to seen_hashes only on success)
+  │     │
+  │     ├── executor: load_chunks(             blocking I/O + CPU — thread pool
+  │     │     include_files=filtered,
+  │     │     file_hashes=hash_map)
+  │     │     └── per file: parse → chunk → stamp chunk.metadata["file_hash"]
+  │     │         (hash computed on-the-fly if not in hash_map — notebook compat)
+  │     │
+  │     └── executor/new-loop: build_vector_store(   CPU-bound — separate thread
+  │           chunks, embedding_model,
+  │           existing_hashes=existing_hashes)
+  │           ├── [if reset] clear collection
+  │           ├── group chunks by file_hash
+  │           ├── skip groups already in store  (belt-and-suspenders)
+  │           └── embed + insert remaining chunks in batches
+  │
+  └── returns ReindexResult(chunks_indexed, files_processed, files_skipped, reset)
+```
+
+#### Deduplication: Two Layers
+
+| Layer | Where | What it skips |
+|-------|-------|---------------|
+| Cross-run | Pre-pass | Files whose hash is already in the vector store — no parsing, no embedding |
+| Within-batch | Pre-pass | Files with identical content to another file in the same run — only the first occurrence is processed |
+
+Both layers operate before `load_chunks`, so expensive PDF parsing is never wasted on
+a file that would ultimately be discarded.
+
+`reset=True` bypasses cross-run dedup (store is cleared). Within-batch dedup still
+applies — two identical files in one run always produce one set of chunks.
+
+#### Key Functions
+
+| Function | File | Role |
+|----------|------|------|
+| `file_hash(path)` | `feature0_baseline_rag.py` | SHA-256 of raw file bytes |
+| `_collect_candidate_files(dirs, ...)` | `feature0_baseline_rag.py` | Extension + size + EVALUATION filter, shared by pre-pass and `load_chunks` |
+| `load_chunks(..., include_files, file_hashes)` | `feature0_baseline_rag.py` | Parse files, stamp `chunk.metadata["file_hash"]` |
+| `build_vector_store(..., existing_hashes)` | `feature0_baseline_rag.py` | Embed and persist; skips chunks already in store |
+| `VectorStore.get_file_hashes()` | `vectorstores/base.py` | Abstract: return set of hashes in the store |
+| `_run_ingestion(kb, reset)` | `main.py` | Orchestrates all steps above; returns `(chunks, files, skipped)` |
+
+#### Threading Model
+
+The ingestion pipeline has three distinct blocking phases, each isolated to avoid
+blocking the FastAPI event loop:
+
+```
+async context (_run_ingestion)
+  │
+  ├── await vs.get_file_hashes()      [async — ChromaDB uses run_in_executor internally]
+  │
+  ├── await run_in_executor(_prepass) [blocking I/O: file discovery + SHA-256 hashing]
+  │
+  ├── await run_in_executor(load_chunks) [blocking I/O + CPU: PDF parsing, chunking]
+  │
+  └── await run_in_executor(_sync_build_vs)
+        └── new_loop.run_until_complete(build_vector_store(...))
+              [CPU-bound: SentenceTransformer.encode() — needs its own event loop]
+```
+
+`_sync_build_vs` creates a fresh event loop because `SentenceTransformer.encode()`
+and the subsequent `insert_chunks` calls must complete synchronously from the thread's
+perspective. For PGVector, a new `AsyncEngine` is created inside this thread (engine
+is bound to the loop that created it and cannot be shared across loops).
+
+---
+
 ### Retrieval Pipeline
 
 `conversational-toolkit/src/conversational_toolkit/retriever/`

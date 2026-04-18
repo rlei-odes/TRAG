@@ -36,7 +36,9 @@ def create_api_router(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail="User doesn't have access to this conversation"
                 )
-        return await controller.process_new_message(user_id=user_id, user_input=user_input, extra_meta=_get_extra_meta())
+        return await controller.process_new_message(
+            user_id=user_id, user_input=user_input, extra_meta=_get_extra_meta()
+        )
 
     @api_router.post("/messages/stream")
     async def post_user_message_stream(

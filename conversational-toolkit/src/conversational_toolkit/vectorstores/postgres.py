@@ -99,10 +99,7 @@ class PGVectorStore(VectorStore):
             query = select(self.table, (1 - self.table.columns.embedding.cosine_distance(embedding)).label("score"))
 
             if filters:
-                conditions = [
-                    self.table.c.chunk_metadata[key].astext == str(value)
-                    for key, value in filters.items()
-                ]
+                conditions = [self.table.c.chunk_metadata[key].astext == str(value) for key, value in filters.items()]
                 query = query.where(and_(*conditions))
 
             query = query.order_by(text("score DESC")).limit(top_k)
@@ -150,10 +147,7 @@ class PGVectorStore(VectorStore):
         async with self.SessionLocal() as session:
             query = select(self.table)
             if filters:
-                conditions = [
-                    self.table.c.chunk_metadata[key].astext == str(value)
-                    for key, value in filters.items()
-                ]
+                conditions = [self.table.c.chunk_metadata[key].astext == str(value) for key, value in filters.items()]
                 query = query.where(and_(*conditions))
 
             result = await session.execute(query)

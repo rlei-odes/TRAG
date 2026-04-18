@@ -99,6 +99,7 @@ def make_vector_store(
     if vs_type == "pgvector":
         from sqlalchemy.ext.asyncio import create_async_engine
         from conversational_toolkit.vectorstores.postgres import PGVectorStore
+
         conn = vs_connection_string.strip()
         if not conn:
             raise ValueError("vs_connection_string is required for pgvector")
@@ -109,7 +110,9 @@ def make_vector_store(
             conn = conn.replace("postgres://", "postgresql+asyncpg://", 1)
         engine = create_async_engine(conn, pool_pre_ping=True)
         dim = EMBEDDING_DIMS.get(embedding_model_name, _DEFAULT_EMBEDDING_DIM)
-        logger.info(f"PGVectorStore: table={table_name!r} dim={dim} conn={conn[:40]}...")
+        logger.info(
+            f"PGVectorStore: table={table_name!r} dim={dim} conn={conn[:40]}..."
+        )
         return PGVectorStore(engine=engine, table_name=table_name, embeddings_size=dim)
     else:
         if db_path is None:
@@ -128,6 +131,7 @@ class NomicVectorStoreRetriever(VectorStoreRetriever):
 
     async def retrieve(self, query: str) -> list[ChunkMatch]:
         return await super().retrieve(f"search_query: {query}")
+
 
 # Paths and defaults
 _ROOT = Path(__file__).parents[3]  # <project-root>/
@@ -162,7 +166,9 @@ SYSTEM_PROMPT = (
     "- Distinguish between third-party verified claims (EPDs) and self-declared supplier claims."
 )
 
-_CHUNKERS: dict[str, PDFChunker | ExcelChunker | MarkdownChunker | MarkItDownChunker] = {
+_CHUNKERS: dict[
+    str, PDFChunker | ExcelChunker | MarkdownChunker | MarkItDownChunker
+] = {
     ".pdf": PDFChunker(),
     ".xlsx": ExcelChunker(),
     ".xls": ExcelChunker(),
@@ -204,9 +210,8 @@ def build_embedding_model(
     custom  → direct OpenAI-compatible API with explicit base URL + API key.
     """
     backend = (
-        embedding_backend
-        or os.getenv("EMBEDDING_BACKEND", "local")
-    ).lower().strip()
+        (embedding_backend or os.getenv("EMBEDDING_BACKEND", "local")).lower().strip()
+    )
     # backward-compat: 'openai' was renamed to 'custom'
     if backend == "openai":
         backend = "custom"
@@ -218,19 +223,28 @@ def build_embedding_model(
         base_url = f"{host}/v1"
         name = model_name or "nomic-embed-text"
         logger.info(f"Embedding backend: Ollama ({name}) @ {base_url}")
-        return OpenAIEmbeddings(model_name=name, base_url=base_url, api_key="ollama", dimensions=None)
+        return OpenAIEmbeddings(
+            model_name=name, base_url=base_url, api_key="ollama", dimensions=None
+        )
     elif backend == "litellm":
         name = model_name or "voyage/voyage-3"
         base_url = os.getenv("LITELLM_BASE_URL", "")
         api_key = os.getenv("LITELLM_API_KEY", "")
         logger.info(f"Embedding backend: LiteLLM ({name}) @ {base_url or 'default'}")
-        return OpenAIEmbeddings(model_name=name, base_url=base_url or None, api_key=api_key or None, dimensions=None)
+        return OpenAIEmbeddings(
+            model_name=name,
+            base_url=base_url or None,
+            api_key=api_key or None,
+            dimensions=None,
+        )
     elif backend == "custom":
         name = model_name or OPENAI_EMBEDDING_MODEL
         url = custom_base_url.strip() or None
         key = custom_api_key.strip() or os.getenv("OPENAI_API_KEY", "") or None
         logger.info(f"Embedding backend: custom ({name}) @ {url or 'OpenAI default'}")
-        return OpenAIEmbeddings(model_name=name, base_url=url, api_key=key, dimensions=None)
+        return OpenAIEmbeddings(
+            model_name=name, base_url=url, api_key=key, dimensions=None
+        )
     else:  # local
         name = model_name or LOCAL_EMBEDDING_MODEL
         logger.info(f"Embedding backend: local SentenceTransformer ({name})")
@@ -256,7 +270,9 @@ def build_llm(
         case "ollama":
             name = model_name or "mistral-nemo:12b"
             host = ollama_host or os.getenv("OLLAMA_HOST") or None
-            logger.info(f"LLM backend: Ollama ({name}) host={host or 'localhost'} num_ctx={num_ctx}")
+            logger.info(
+                f"LLM backend: Ollama ({name}) host={host or 'localhost'} num_ctx={num_ctx}"
+            )
             return OllamaLLM(
                 model_name=name,
                 temperature=temperature,
@@ -315,8 +331,12 @@ def build_llm(
                 url = "https://vllm-gateway-runai-codev-llm.inference.compute.datascience.ch/v1"
             logger.info(f"LLM backend: {backend} ({name})")
             return OpenAILLM(
-                model_name=name, temperature=temperature, seed=SEED,
-                openai_api_key=key or None, base_url=url, response_format=response_format,
+                model_name=name,
+                temperature=temperature,
+                seed=SEED,
+                openai_api_key=key or None,
+                base_url=url,
+                response_format=response_format,
             )
         case _:
             raise ValueError(
@@ -344,12 +364,14 @@ def _split_chunk_by_tokens(chunk: Chunk, max_tokens: int) -> list[Chunk]:
         if current:
             sub_text = "\n\n".join(current).strip()
             if sub_text:
-                sub_chunks.append(Chunk(
-                    title=chunk.title,
-                    content=sub_text,
-                    mime_type=chunk.mime_type,
-                    metadata=chunk.metadata.copy(),
-                ))
+                sub_chunks.append(
+                    Chunk(
+                        title=chunk.title,
+                        content=sub_text,
+                        mime_type=chunk.mime_type,
+                        metadata=chunk.metadata.copy(),
+                    )
+                )
 
     for para in paragraphs:
         if current_len + len(para) + 2 > max_chars and current:
@@ -363,12 +385,14 @@ def _split_chunk_by_tokens(chunk: Chunk, max_tokens: int) -> list[Chunk]:
             word_len = 0
             for word in words:
                 if word_len + len(word) + 1 > max_chars and word_buf:
-                    sub_chunks.append(Chunk(
-                        title=chunk.title,
-                        content=" ".join(word_buf),
-                        mime_type=chunk.mime_type,
-                        metadata=chunk.metadata.copy(),
-                    ))
+                    sub_chunks.append(
+                        Chunk(
+                            title=chunk.title,
+                            content=" ".join(word_buf),
+                            mime_type=chunk.mime_type,
+                            metadata=chunk.metadata.copy(),
+                        )
+                    )
                     word_buf = []
                     word_len = 0
                 word_buf.append(word)
@@ -450,8 +474,9 @@ def load_chunks(
     on_progress=None,  # callable(current_file, file_index, total_files, chunks_so_far)
     pdf_ocr_enabled: bool = True,
     max_chunk_tokens: int = 0,
-    include_files: list[Path] | None = None,    # if set, skip data_dirs discovery
-    file_hashes: dict[Path, str] | None = None, # precomputed hashes for stamping chunks
+    include_files: list[Path] | None = None,  # if set, skip data_dirs discovery
+    file_hashes: dict[Path, str]
+    | None = None,  # precomputed hashes for stamping chunks
 ) -> list[Chunk]:
     """Load documents and split them into chunks.
 
@@ -475,16 +500,22 @@ def load_chunks(
 
     if include_files is not None:
         supported_files = include_files
-        logger.info(f"Chunking {len(supported_files)} files (pre-filtered by dedup pre-pass)")
+        logger.info(
+            f"Chunking {len(supported_files)} files (pre-filtered by dedup pre-pass)"
+        )
     else:
         supported_files = _collect_candidate_files(dirs, max_file_size_mb, max_files)
-        logger.info(f"Chunking {len(supported_files)} files from {[str(d) for d in dirs]}")
+        logger.info(
+            f"Chunking {len(supported_files)} files from {[str(d) for d in dirs]}"
+        )
 
     for file_idx, file_path in enumerate(supported_files):
         chunker = _CHUNKERS[file_path.suffix.lower()]
         try:
             if on_progress:
-                on_progress(file_path.name, file_idx, len(supported_files), len(all_chunks))
+                on_progress(
+                    file_path.name, file_idx, len(supported_files), len(all_chunks)
+                )
             kwargs = {}
             if hasattr(chunker, "make_chunks") and file_path.suffix.lower() == ".pdf":
                 kwargs["do_ocr"] = pdf_ocr_enabled
@@ -503,7 +534,9 @@ def load_chunks(
             all_chunks.extend(file_chunks)
             logger.debug(f"  {file_path.name}: {len(file_chunks)} chunks")
             if on_progress:
-                on_progress(file_path.name, file_idx + 1, len(supported_files), len(all_chunks))
+                on_progress(
+                    file_path.name, file_idx + 1, len(supported_files), len(all_chunks)
+                )
         except Exception as exc:
             logger.warning(f"Skipping {file_path.name}: {exc}")
 
@@ -531,8 +564,10 @@ async def build_vector_store(
     reset: bool = False,
     batch_size: int = 50,
     on_embed_progress=None,  # callable(batch_index, total_batches)
-    vector_store: VectorStore | None = None,  # if provided, use instead of creating ChromaDB
-    existing_hashes: set[str] | None = None,  # precomputed from pre-pass; avoids second metadata scan
+    vector_store: VectorStore
+    | None = None,  # if provided, use instead of creating ChromaDB
+    existing_hashes: set[str]
+    | None = None,  # precomputed from pre-pass; avoids second metadata scan
 ) -> VectorStore:
     """Embed chunks and persist them in a vector store (ChromaDB or PGVector).
 
@@ -573,7 +608,9 @@ async def build_vector_store(
     if existing_hashes is None:
         existing_hashes = await vector_store.get_file_hashes()
         if existing_hashes:
-            logger.debug(f"build_vector_store: {len(existing_hashes)} hashes already in store")
+            logger.debug(
+                f"build_vector_store: {len(existing_hashes)} hashes already in store"
+            )
 
     # Group chunks by file_hash and filter out files already indexed.
     chunks_by_hash: dict[str, list[Chunk]] = {}
@@ -671,7 +708,9 @@ def build_agent(
         number_query_expansion=number_query_expansion,
         enable_hyde=enable_hyde,
     )
-    logger.info(f"RAG agent ready (top_k={top_k}  query_expansion={number_query_expansion})")
+    logger.info(
+        f"RAG agent ready (top_k={top_k}  query_expansion={number_query_expansion})"
+    )
     return agent
 
 

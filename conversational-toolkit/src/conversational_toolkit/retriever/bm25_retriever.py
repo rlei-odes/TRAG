@@ -40,6 +40,7 @@ class BM25Retriever(Retriever[ChunkMatch]):
         """Score the corpus against 'query' using BM25 and return the top 'top_k' matches."""
         if self._bm25 is None:
             import asyncio
+
             loop = asyncio.get_running_loop()
             self.corpus = await self.vs.get_chunks_by_filter()
 

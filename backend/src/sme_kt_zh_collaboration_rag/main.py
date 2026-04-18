@@ -95,7 +95,11 @@ from sme_kt_zh_collaboration_rag.feature0_baseline_rag import (
 )
 from sme_kt_zh_collaboration_rag.kb_router import KBInfo, create_kb_router
 from sme_kt_zh_collaboration_rag.openai_compat_router import create_openai_compat_router
-from sme_kt_zh_collaboration_rag.rag_router import RagConfig, ReindexResult, create_rag_router
+from sme_kt_zh_collaboration_rag.rag_router import (
+    RagConfig,
+    ReindexResult,
+    create_rag_router,
+)
 from sme_kt_zh_collaboration_rag.utils.json import parse_llm_json_stream
 
 log = logging.getLogger("uvicorn")
@@ -109,10 +113,10 @@ RESET_VS = os.getenv("RESET_VS", "0") == "1"
 # Comma-separated list of allowed CORS origins.
 # Example: ALLOW_ORIGINS=https://rag.example.com,https://demo.example.com
 _raw_origins = os.getenv("ALLOW_ORIGINS", "")
-ALLOW_ORIGINS = (
-    [o.strip() for o in _raw_origins.split(",") if o.strip()]
-    or ["http://localhost:3000", "http://localhost:8080"]
-)
+ALLOW_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()] or [
+    "http://localhost:3000",
+    "http://localhost:8080",
+]
 
 for _secret_name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LITELLM_API_KEY"):
     _secret_file = pathlib.Path(f"/secrets/{_secret_name}")
@@ -132,6 +136,7 @@ _PROMPTS_DIR.mkdir(exist_ok=True)
 # System prompt
 # ---------------------------------------------------------------------------
 
+
 def _load_system_prompt() -> str:
     """Load system prompt from file. Custom overrides default; both live in prompts/.
     Custom file is gitignored — safe for internal/confidential instructions."""
@@ -143,6 +148,7 @@ def _load_system_prompt() -> str:
                 return content
     # Should never reach here if default file is present, but kept as safety net.
     return ""
+
 
 # ---------------------------------------------------------------------------
 # JSON schema for structured LLM output
@@ -175,7 +181,10 @@ json_schema = {
 # ---------------------------------------------------------------------------
 # Custom RAG with post-processing
 # ---------------------------------------------------------------------------
-_UUID_RE = re.compile(r"\[?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]?", re.IGNORECASE)
+_UUID_RE = re.compile(
+    r"\[?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]?",
+    re.IGNORECASE,
+)
 
 # Global query status (polled by frontend via GET /api/v1/rag/query-status)
 _query_status: dict = {"active": False, "phase": "idle"}
@@ -224,12 +233,14 @@ class CustomRAG(RAG):
         # Angle brackets allow spaces in CommonMark URLs; source:// is intercepted
         # by the frontend Markdown component to show a content popup.
         id_to_file = {s.id: s.metadata.get("source_file", "") for s in unique_sources}
+
         def _replace_uuid(m: re.Match) -> str:
             uid = m.group(1)
             filename = id_to_file.get(uid, "")
             if not filename:
                 return ""
             return f"[{filename}](<source://{filename}>)"
+
         content = _UUID_RE.sub(_replace_uuid, content)
 
         # Also handle [N]-style footnote citations (produced by models that don't follow
@@ -274,7 +285,13 @@ class _Proxy:
 # ---------------------------------------------------------------------------
 def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRAG]:
     """Instantiate (vector_store, agent) for the given KB + session config."""
-    emb = build_embedding_model(kb.embedding_backend, kb.embedding_model, ollama_host=kb.embedding_ollama_host or "", custom_base_url=kb.embedding_custom_base_url or "", custom_api_key=kb.embedding_custom_api_key or "")
+    emb = build_embedding_model(
+        kb.embedding_backend,
+        kb.embedding_model,
+        ollama_host=kb.embedding_ollama_host or "",
+        custom_base_url=kb.embedding_custom_base_url or "",
+        custom_api_key=kb.embedding_custom_api_key or "",
+    )
     vs_type = getattr(kb, "vs_type", "chromadb") or "chromadb"
     vs_conn = getattr(kb, "vs_connection_string", "") or ""
     vs = make_vector_store(
@@ -289,16 +306,25 @@ def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRA
     # When reranking, fetch a larger candidate pool first
     retriever_k = cfg.reranking_candidate_pool if cfg.reranking_enabled else top_k
     semantic = _make_retriever(emb, vs, retriever_k)
-    retrievers = [semantic, BM25Retriever(vs, top_k=retriever_k)] if cfg.bm25_enabled else [semantic]
+    retrievers = (
+        [semantic, BM25Retriever(vs, top_k=retriever_k)]
+        if cfg.bm25_enabled
+        else [semantic]
+    )
     hybrid = HybridRetriever(retrievers=retrievers, top_k=retriever_k)
 
-    _is_ollama_via_litellm = cfg.llm_backend == "litellm" and (cfg.llm_model or "").startswith("ollama/")
+    _is_ollama_via_litellm = cfg.llm_backend == "litellm" and (
+        cfg.llm_model or ""
+    ).startswith("ollama/")
     llm_fmt = (
         None
         if cfg.llm_backend == "ollama" or _is_ollama_via_litellm
         else {"type": "json_object"}
         if cfg.llm_backend == "litellm"
-        else {"type": "json_schema", "json_schema": {"schema": json_schema, "name": "AnswerSchema"}}
+        else {
+            "type": "json_schema",
+            "json_schema": {"schema": json_schema, "name": "AnswerSchema"},
+        }
     )
     ollama_host = cfg.ollama_host.strip() or None
     try:
@@ -313,9 +339,16 @@ def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRA
             custom_api_key=getattr(cfg, "custom_api_key", ""),
         )
     except ValueError as exc:
-        log.warning(f"LLM build failed ({exc}), falling back to ollama/mistral-nemo:12b")
-        llm = build_llm(backend="ollama", model_name="mistral-nemo:12b", temperature=cfg.llm_temperature,
-                        ollama_host=ollama_host, num_ctx=cfg.num_ctx)
+        log.warning(
+            f"LLM build failed ({exc}), falling back to ollama/mistral-nemo:12b"
+        )
+        llm = build_llm(
+            backend="ollama",
+            model_name="mistral-nemo:12b",
+            temperature=cfg.llm_temperature,
+            ollama_host=ollama_host,
+            num_ctx=cfg.num_ctx,
+        )
 
     # Use a separate smaller/faster model for preprocessing (query rewriting, HyDE, reranking).
     # Falls back to the main LLM if no utility model is configured or build fails.
@@ -333,12 +366,18 @@ def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRA
             )
             log.info(f"Utility LLM: {cfg.llm_backend}/{utility_model}")
         except Exception as exc:
-            log.warning(f"Utility LLM build failed ({exc}), using main LLM for preprocessing")
+            log.warning(
+                f"Utility LLM build failed ({exc}), using main LLM for preprocessing"
+            )
             utility_llm = llm
     else:
         utility_llm = llm
 
-    final_retriever = RerankingRetriever(hybrid, utility_llm, top_k=top_k) if cfg.reranking_enabled else hybrid
+    final_retriever = (
+        RerankingRetriever(hybrid, utility_llm, top_k=top_k)
+        if cfg.reranking_enabled
+        else hybrid
+    )
 
     base_prompt = cfg.system_prompt.strip() or _load_system_prompt()
 
@@ -362,17 +401,27 @@ async def _inject_source_files(agent: Any, vs: VectorStore, base_prompt: str) ->
         return
     if indexed_files:
         file_list = "\n".join(f"- {f}" for f in indexed_files)
-        agent.system_prompt = base_prompt + f"\n\nINDEXIERTE DATEIEN ({len(indexed_files)} Dateien):\n{file_list}"
+        agent.system_prompt = (
+            base_prompt
+            + f"\n\nINDEXIERTE DATEIEN ({len(indexed_files)} Dateien):\n{file_list}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Global index status (polled by frontend via GET /api/v1/rag/reindex-status)
 # ---------------------------------------------------------------------------
 _index_status: dict = {
-    "indexing": False, "phase": "loading",
-    "current_file": "", "file_index": 0, "total_files": 0, "chunks_so_far": 0,
-    "embed_batch": 0, "embed_total_batches": 0,
-    "kb_name": "", "finished_at": "", "last_result": None,
+    "indexing": False,
+    "phase": "loading",
+    "current_file": "",
+    "file_index": 0,
+    "total_files": 0,
+    "chunks_so_far": 0,
+    "embed_batch": 0,
+    "embed_total_batches": 0,
+    "kb_name": "",
+    "finished_at": "",
+    "last_result": None,
 }
 _cancel_requested: bool = False
 
@@ -395,25 +444,43 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
     """
     global _cancel_requested  # noqa: PLW0603
     _cancel_requested = False
-    _index_status.update({
-        "indexing": True, "phase": "loading",
-        "current_file": "", "file_index": 0, "total_files": 0, "chunks_so_far": 0,
-        "embed_batch": 0, "embed_total_batches": 0,
-        "kb_name": kb.name, "finished_at": "", "last_result": None,
-    })
+    _index_status.update(
+        {
+            "indexing": True,
+            "phase": "loading",
+            "current_file": "",
+            "file_index": 0,
+            "total_files": 0,
+            "chunks_so_far": 0,
+            "embed_batch": 0,
+            "embed_total_batches": 0,
+            "kb_name": kb.name,
+            "finished_at": "",
+            "last_result": None,
+        }
+    )
 
-    def _on_progress(current_file: str, file_index: int, total_files: int, chunks_so_far: int) -> None:
+    def _on_progress(
+        current_file: str, file_index: int, total_files: int, chunks_so_far: int
+    ) -> None:
         if _cancel_requested:
             raise _IndexingCancelled()
-        _index_status.update({
-            "current_file": current_file, "file_index": file_index,
-            "total_files": total_files, "chunks_so_far": chunks_so_far,
-        })
+        _index_status.update(
+            {
+                "current_file": current_file,
+                "file_index": file_index,
+                "total_files": total_files,
+                "chunks_so_far": chunks_so_far,
+            }
+        )
 
     import asyncio
+
     loop = asyncio.get_event_loop()
     try:
-        data_dirs = [Path(d) if Path(d).is_absolute() else _ROOT / d for d in kb.data_dirs]
+        data_dirs = [
+            Path(d) if Path(d).is_absolute() else _ROOT / d for d in kb.data_dirs
+        ]
 
         vs_type = getattr(kb, "vs_type", "chromadb") or "chromadb"
         vs_conn = getattr(kb, "vs_connection_string", "") or ""
@@ -437,7 +504,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
         if not reset:
             existing_hashes = await vs_for_query.get_file_hashes()
             if existing_hashes:
-                log.info(f"Dedup: {len(existing_hashes)} file hash(es) already in store")
+                log.info(
+                    f"Dedup: {len(existing_hashes)} file hash(es) already in store"
+                )
             else:
                 current_count = await vs_for_query.count()
                 if current_count > 0:
@@ -473,7 +542,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                     log.info(f"Skipping {f.name!r} — already in store (hash={h[:8]}…)")
                     n_skipped_store += 1
                 elif h in seen_hashes:
-                    log.warning(f"Skipping {f.name!r} — duplicate content in batch (hash={h[:8]}…)")
+                    log.warning(
+                        f"Skipping {f.name!r} — duplicate content in batch (hash={h[:8]}…)"
+                    )
                     n_skipped_batch += 1
                 else:
                     seen_hashes.add(h)
@@ -486,11 +557,17 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
             )
             return filtered, hashes, n_skipped_store, n_skipped_batch
 
-        filtered_files, file_hashes_map, n_skipped_store, n_skipped_batch = \
-            await loop.run_in_executor(None, _prepass)
+        (
+            filtered_files,
+            file_hashes_map,
+            n_skipped_store,
+            n_skipped_batch,
+        ) = await loop.run_in_executor(None, _prepass)
 
         if not filtered_files:
-            log.info(f"All files already indexed for KB '{kb.name}' — nothing to embed.")
+            log.info(
+                f"All files already indexed for KB '{kb.name}' — nothing to embed."
+            )
             return 0, 0, n_skipped_store, n_skipped_batch
 
         # Run blocking load_chunks in thread pool so event loop stays responsive.
@@ -502,19 +579,29 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                 on_progress=_on_progress,
                 pdf_ocr_enabled=kb.pdf_ocr_enabled,
                 max_chunk_tokens=getattr(kb, "max_chunk_tokens", 0),
-            )
+            ),
         )
         if not chunks:
-            log.warning(f"No chunks produced for KB '{kb.name}' — vector store unchanged.")
+            log.warning(
+                f"No chunks produced for KB '{kb.name}' — vector store unchanged."
+            )
             return 0, 0, n_skipped_store, n_skipped_batch
 
-        emb = build_embedding_model(kb.embedding_backend, kb.embedding_model, ollama_host=kb.embedding_ollama_host or "", custom_base_url=kb.embedding_custom_base_url or "", custom_api_key=kb.embedding_custom_api_key or "")
+        emb = build_embedding_model(
+            kb.embedding_backend,
+            kb.embedding_model,
+            ollama_host=kb.embedding_ollama_host or "",
+            custom_base_url=kb.embedding_custom_base_url or "",
+            custom_api_key=kb.embedding_custom_api_key or "",
+        )
         _index_status["phase"] = "embedding"
 
         def _on_embed_progress(batch_idx: int, total_batches: int) -> None:
             if _cancel_requested:
                 raise _IndexingCancelled()
-            _index_status.update({"embed_batch": batch_idx, "embed_total_batches": total_batches})
+            _index_status.update(
+                {"embed_batch": batch_idx, "embed_total_batches": total_batches}
+            )
 
         # build_vector_store is async but calls blocking SentenceTransformer.encode().
         # Run it in a thread with its own event loop to keep the main loop responsive.
@@ -535,8 +622,11 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                     vs_instance = vs_for_query  # ChromaDB: safe to reuse across threads
                 return new_loop.run_until_complete(
                     build_vector_store(
-                        chunks=chunks, embedding_model=emb, db_path=vs_path or VS_PATH,
-                        reset=reset, on_embed_progress=_on_embed_progress,
+                        chunks=chunks,
+                        embedding_model=emb,
+                        db_path=vs_path or VS_PATH,
+                        reset=reset,
+                        on_embed_progress=_on_embed_progress,
                         batch_size=kb.embedding_batch_size,
                         vector_store=vs_instance,
                         existing_hashes=existing_hashes,
@@ -544,6 +634,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                 )
             finally:
                 new_loop.close()
+
         await loop.run_in_executor(None, _sync_build_vs)
         n_files = len(Counter(c.metadata.get("source_file", "?") for c in chunks))
         log.info(
@@ -567,7 +658,11 @@ def build_server():
     # ── Session config ────────────────────────────────────────────────────
     session_cfg_path = _DB_DIR / "rag_config.json"
     try:
-        session_cfg = RagConfig(**json.loads(session_cfg_path.read_text())) if session_cfg_path.exists() else RagConfig()
+        session_cfg = (
+            RagConfig(**json.loads(session_cfg_path.read_text()))
+            if session_cfg_path.exists()
+            else RagConfig()
+        )
     except Exception:
         session_cfg = RagConfig()
 
@@ -580,12 +675,16 @@ def build_server():
             active_kb = KBInfo(**reg["bases"][active_id])
         else:
             active_kb = KBInfo(
-                id="default", name="Standard", data_dirs=["data/"],
+                id="default",
+                name="Standard",
+                data_dirs=["data/"],
                 vs_path=str(_DB_DIR / "vs_text"),
             )
     except Exception:
         active_kb = KBInfo(
-            id="default", name="Standard", data_dirs=["data/"],
+            id="default",
+            name="Standard",
+            data_dirs=["data/"],
             vs_path=str(_DB_DIR / "vs_text"),
         )
 
@@ -605,18 +704,24 @@ def build_server():
     if _conv_path.exists():
         try:
             _conv_data = json.loads(_conv_path.read_text())
-            _changed = sum(1 for c in _conv_data.values() if c.get("user_id") != _stable_user_id)
+            _changed = sum(
+                1 for c in _conv_data.values() if c.get("user_id") != _stable_user_id
+            )
             if _changed:
                 for c in _conv_data.values():
                     c["user_id"] = _stable_user_id
                 _conv_path.write_text(json.dumps(_conv_data, indent=4))
-                log.info(f"Migrated {_changed} conversations to stable user_id '{_stable_user_id[:8]}...'")
+                log.info(
+                    f"Migrated {_changed} conversations to stable user_id '{_stable_user_id[:8]}...'"
+                )
         except Exception as exc:
             log.warning(f"Conversation migration skipped: {exc}")
 
     # ── Controller ────────────────────────────────────────────────────────
     controller = ConversationalToolkitController(
-        conversation_db=InMemoryConversationDatabase(str(_DB_DIR / "conversations.json")),
+        conversation_db=InMemoryConversationDatabase(
+            str(_DB_DIR / "conversations.json")
+        ),
         message_db=InMemoryMessageDatabase(str(_DB_DIR / "messages.json")),
         reaction_db=InMemoryReactionDatabase(str(_DB_DIR / "reactions.json")),
         source_db=InMemorySourceDatabase(str(_DB_DIR / "sources.json")),
@@ -628,7 +733,11 @@ def build_server():
     def _conversation_metadata() -> dict:
         try:
             kb = kb_router.get_active_kb()
-            cfg = RagConfig(**json.loads(session_cfg_path.read_text())) if session_cfg_path.exists() else session_cfg
+            cfg = (
+                RagConfig(**json.loads(session_cfg_path.read_text()))
+                if session_cfg_path.exists()
+                else session_cfg
+            )
             return {
                 "kb_id": kb.id,
                 "kb_name": kb.name,
@@ -664,7 +773,11 @@ def build_server():
     async def on_kb_activate(kb: KBInfo) -> None:
         log.info(f"KB switch → '{kb.name}' (id={kb.id})")
         try:
-            cfg = RagConfig(**json.loads(session_cfg_path.read_text())) if session_cfg_path.exists() else session_cfg
+            cfg = (
+                RagConfig(**json.loads(session_cfg_path.read_text()))
+                if session_cfg_path.exists()
+                else session_cfg
+            )
         except Exception:
             cfg = session_cfg
         new_vs, new_agent = _build_components(kb, cfg)
@@ -672,7 +785,9 @@ def build_server():
         agent_proxy.switch(new_agent)
         log.info(f"Agent ready for KB '{kb.name}'")
 
-    kb_router = create_kb_router(db_dir=_DB_DIR, activate_callback=on_kb_activate, project_root=_ROOT)
+    kb_router = create_kb_router(
+        db_dir=_DB_DIR, activate_callback=on_kb_activate, project_root=_ROOT
+    )
     app.include_router(kb_router)
 
     # ── Startup: auto-ingest active KB if VS is empty ─────────────────────
@@ -681,7 +796,9 @@ def build_server():
         agent = object.__getattribute__(agent_proxy, "_obj")
         count = await vs.count()
         if not RESET_VS and count > 0:
-            log.info(f"Vector store already populated ({count} chunks) — skipping ingestion.")
+            log.info(
+                f"Vector store already populated ({count} chunks) — skipping ingestion."
+            )
             try:
                 indexed_files = await vs.get_source_files()
                 n_files = len(indexed_files)
@@ -692,13 +809,21 @@ def build_server():
             base_prompt = session_cfg.system_prompt.strip() or _load_system_prompt()
             await _inject_source_files(agent, vs, base_prompt)
             return
-        msg = "RESET_VS=1 — rebuilding." if RESET_VS else "Vector store empty — starting background ingestion."
+        msg = (
+            "RESET_VS=1 — rebuilding."
+            if RESET_VS
+            else "Vector store empty — starting background ingestion."
+        )
         log.info(msg)
 
         async def _bg_ingest() -> None:
-            chunks_n, files_n, skipped_store_n, skipped_batch_n = await _run_ingestion(active_kb, RESET_VS)
+            chunks_n, files_n, skipped_store_n, skipped_batch_n = await _run_ingestion(
+                active_kb, RESET_VS
+            )
             kb_router.update_stats(active_kb.id, chunks_n, files_n)
-            log.info(f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files ({skipped_store_n} already in store, {skipped_batch_n} duplicate in batch).")
+            log.info(
+                f"Auto-ingestion complete: {chunks_n} chunks from {files_n} files ({skipped_store_n} already in store, {skipped_batch_n} duplicate in batch)."
+            )
 
         asyncio.create_task(_bg_ingest())
         log.info("Auto-ingestion running in background — HTTP server is ready.")
@@ -713,7 +838,9 @@ def build_server():
         except Exception:
             kb = active_kb
 
-        chunks_n, files_n, skipped_store_n, skipped_batch_n = await _run_ingestion(kb, reset)
+        chunks_n, files_n, skipped_store_n, skipped_batch_n = await _run_ingestion(
+            kb, reset
+        )
         kb_router.update_stats(kb.id, chunks_n, files_n)
 
         # Rebuild so BM25 re-indexes new content
@@ -724,6 +851,7 @@ def build_server():
         agent_proxy.switch(new_agent)
 
         from datetime import datetime, timezone
+
         result = ReindexResult(
             chunks_indexed=chunks_n,
             files_processed=files_n,

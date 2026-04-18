@@ -27,6 +27,7 @@ log = logging.getLogger("uvicorn")
 
 # ─── Session config (no re-index needed) ──────────────────────────────────────
 
+
 class RagConfig(BaseModel):
     # Retrieval
     retriever_top_k: int = Field(5, ge=1, le=50)
@@ -38,17 +39,23 @@ class RagConfig(BaseModel):
     reranking_candidate_pool: int = Field(15, ge=3, le=100)
 
     # LLM
-    llm_backend: str = Field("ollama")         # ollama | litellm | custom
+    llm_backend: str = Field("ollama")  # ollama | litellm | custom
     llm_model: str = Field("mistral-nemo:12b")
     llm_temperature: float = Field(0.3, ge=0.0, le=2.0)
-    ollama_host: str = Field("")               # empty = localhost:11434
-    utility_llm_model: str = Field("")         # empty = use same as llm_model; set e.g. "qwen2.5:3b" for faster preprocessing
-    num_ctx: int = Field(8192, ge=512, le=131072)  # Ollama KV-cache window; 16384+ overflows VRAM on <16GB GPUs → CPU fallback
-    custom_base_url: str = Field("")           # custom: OpenAI-compat base URL, e.g. https://api.anthropic.com/v1
-    custom_api_key: str = Field("")            # custom: API key for custom endpoint
+    ollama_host: str = Field("")  # empty = localhost:11434
+    utility_llm_model: str = Field(
+        ""
+    )  # empty = use same as llm_model; set e.g. "qwen2.5:3b" for faster preprocessing
+    num_ctx: int = Field(
+        8192, ge=512, le=131072
+    )  # Ollama KV-cache window; 16384+ overflows VRAM on <16GB GPUs → CPU fallback
+    custom_base_url: str = Field(
+        ""
+    )  # custom: OpenAI-compat base URL, e.g. https://api.anthropic.com/v1
+    custom_api_key: str = Field("")  # custom: API key for custom endpoint
 
     # Prompt
-    system_prompt: str = Field("")             # empty = use server default
+    system_prompt: str = Field("")  # empty = use server default
     follow_up_count: int = Field(3, ge=0, le=10)
 
 
@@ -65,37 +72,40 @@ class StoreInfo(BaseModel):
 class ReindexResult(BaseModel):
     chunks_indexed: int
     files_processed: int
-    files_skipped: int = 0          # total skipped (store + batch), kept for backwards compat
-    files_skipped_store: int = 0    # already in vector store (cross-run dedup)
-    files_skipped_batch: int = 0    # duplicate content within the same run
+    files_skipped: int = 0  # total skipped (store + batch), kept for backwards compat
+    files_skipped_store: int = 0  # already in vector store (cross-run dedup)
+    files_skipped_batch: int = 0  # duplicate content within the same run
     reset: bool
 
 
 class IndexStatus(BaseModel):
     indexing: bool = False
-    phase: str = "loading"        # "loading" | "embedding"
+    phase: str = "loading"  # "loading" | "embedding"
     current_file: str = ""
     file_index: int = 0
     total_files: int = 0
     chunks_so_far: int = 0
     embed_batch: int = 0
     embed_total_batches: int = 0
-    kb_name: str = ""             # name of the KB being indexed
-    finished_at: str = ""         # ISO timestamp set when indexing completes
+    kb_name: str = ""  # name of the KB being indexed
+    finished_at: str = ""  # ISO timestamp set when indexing completes
     last_result: ReindexResult | None = None  # result of the last completed reindex
 
 
 # ─── Router factory ───────────────────────────────────────────────────────────
 
+
 def create_rag_router(
     db_dir: Path,
-    vector_store_factory: Callable,      # () -> VectorStore proxy
-    rebuild_callback: Callable,          # async (config, reset) -> ReindexResult
-    prompts_dir: Path | None = None,     # directory containing system_prompt.*.md files
-    status_factory: Callable | None = None,       # () -> dict with indexing progress
-    query_status_factory: Callable | None = None, # () -> dict with query phase
-    agent_rebuild_callback: Callable | None = None,  # (config) -> None, rebuilds agent without reindex
-    cancel_callback: Callable | None = None,      # () -> None, requests indexing cancellation
+    vector_store_factory: Callable,  # () -> VectorStore proxy
+    rebuild_callback: Callable,  # async (config, reset) -> ReindexResult
+    prompts_dir: Path | None = None,  # directory containing system_prompt.*.md files
+    status_factory: Callable | None = None,  # () -> dict with indexing progress
+    query_status_factory: Callable | None = None,  # () -> dict with query phase
+    agent_rebuild_callback: Callable
+    | None = None,  # (config) -> None, rebuilds agent without reindex
+    cancel_callback: Callable
+    | None = None,  # () -> None, requests indexing cancellation
 ) -> APIRouter:
     """
     Args:
@@ -131,7 +141,9 @@ def create_rag_router(
         if config_path.exists():
             try:
                 data = json.loads(config_path.read_text())
-                data.pop("system_prompt", None)  # always load prompt from file, not JSON
+                data.pop(
+                    "system_prompt", None
+                )  # always load prompt from file, not JSON
                 cfg = RagConfig(**data)
             except Exception as exc:
                 log.warning(f"Could not load rag_config.json: {exc} — using defaults")
@@ -167,11 +179,13 @@ def create_rag_router(
             count = await vs.count()
             try:
                 records = await vs.get_chunks_by_filter({})
-                files = sorted({
-                    r.metadata.get("source_file", "unknown")
-                    for r in records
-                    if r.metadata
-                })
+                files = sorted(
+                    {
+                        r.metadata.get("source_file", "unknown")
+                        for r in records
+                        if r.metadata
+                    }
+                )
             except Exception:
                 files = []
             return StoreInfo(chunks=count, files=len(files), file_list=files)
@@ -203,7 +217,9 @@ def create_rag_router(
         GET /reindex-status for progress; last_result carries the final counts.
         """
         if status_factory is not None and status_factory().get("indexing"):
-            raise HTTPException(status_code=409, detail="Indexierung läuft bereits. Bitte warten.")
+            raise HTTPException(
+                status_code=409, detail="Indexierung läuft bereits. Bitte warten."
+            )
         cfg = _load_config()
         log.info(f"Reindex requested: reset={req.reset}")
         background_tasks.add_task(rebuild_callback, cfg, req.reset)
@@ -235,6 +251,7 @@ def create_rag_router(
         """Fetch available model IDs from the configured LiteLLM proxy."""
         import os
         from openai import AsyncOpenAI
+
         base_url = os.getenv("LITELLM_BASE_URL", "").rstrip("/")
         api_key = os.getenv("LITELLM_API_KEY", "")
         if not base_url:
@@ -253,6 +270,7 @@ def create_rag_router(
     async def get_ollama_models(host: str = "localhost:11434") -> list[str]:
         """Fetch available model names from an Ollama instance."""
         import httpx
+
         if not host:
             return []
         base = host if host.startswith("http") else f"http://{host}"

@@ -56,6 +56,7 @@ class SentenceTransformerEmbeddings(EmbeddingsModel):
     async def get_embeddings(self, texts: Union[str, list[str]], **kwargs_encode: Any) -> NDArray[np.float64]:
         """Encode a string or a list of strings into embeddings using the model."""
         import asyncio
+
         loop = asyncio.get_running_loop()
 
         def _encode():

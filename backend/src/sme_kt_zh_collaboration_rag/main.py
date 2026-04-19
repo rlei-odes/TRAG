@@ -691,7 +691,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                         build_vector_store(
                             chunks=image_chunks,
                             embedding_model=image_emb,
-                            db_path=Path(kb.vs_path + "_images"),
+                            vector_store=image_vs,
                             reset=reset,
                             existing_hashes=existing_image_hashes,
                         )

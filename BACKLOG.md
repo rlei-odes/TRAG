@@ -3,6 +3,12 @@
 Planned improvements and feature work for the TRAG fork.
 Items are grouped by theme and roughly prioritised within each section.
 
+## Codebase and Cleanup
+
+- [ ] **Audit all code and notebook files** — go through `backend/notebooks/`, `conversational-toolkit/`, and all backend source files to decide what is still relevant, what can be removed, and what is missing from the Key Files table above. Goal: make the Key Files section a complete and accurate map of the codebase.
+
+- [ ] **After Cleanup, refresh doc content** — document the relevant folders, files and their purpose
+
 ---
 
 ## Known Bugs
@@ -106,6 +112,15 @@ Implemented. See `IMAGE_RETRIEVAL_DESIGN.md` for the full design and implementat
 - Frontend: the sources panel (and/or a dedicated image sources row) renders base64 image thumbnails with a filename label; clicking expands to full size
 - Design open question: inline thumbnail strip below the answer vs. collapsible section in the sources panel — decide at implementation time based on typical image count (1–4 per query)
 
+### PDF OCR vs. Image Retrieval — Clarify and Document for Users
+
+Two separate features both deal with "images in PDFs" but solve different problems:
+
+- **PDF OCR** (`pdf_ocr_enabled`) — uses Docling's OCR to extract *text* from scanned pages (image-only PDFs where no selectable text layer exists). Output: text chunks in `vs_text`. No GPU required. Useful for scanned contracts, archived documents.
+- **Image retrieval** (`image_indexing_enabled`) — extracts *embedded figures, charts, and diagrams* from PDFs as images and stores them as visual embeddings in `vs_image`. Requires Qwen3VL + GPU. Useful for technical documents with data visualisations.
+
+They are complementary, not alternatives — it is reasonable to have both on. A scanned annual report benefits from OCR (to read the text pages) and image indexing (to retrieve the charts). Needs a short guidance note in the UI or documentation to help users understand when to enable each.
+
 ### Image Retrieval — Optional Caption Pipeline (low priority)
 
 `IMAGE_MODE=caption` alternative: at ingest, a lightweight VL model (e.g. `minicpm-v` via Ollama) generates a text description of each image; caption stored as a text chunk in `vs_text`. Works with any text-only LLM, no GPU required for retrieval. Useful when the corpus has important image content but large hardware is not available.
@@ -113,6 +128,8 @@ Implemented. See `IMAGE_RETRIEVAL_DESIGN.md` for the full design and implementat
 ### Image Retrieval — Automatic Multimodal LLM Validation (optional)
 
 When `image_retrieval_enabled` is on, the system silently injects images into the LLM context but does not validate that the configured answering LLM is actually multimodal. A non-multimodal LLM will either ignore the image data or produce an error. A startup/save-time check against the Ollama model manifest (or a known allowlist) could surface a clear warning in the UI before the user runs a query.
+
+
 
 ### File Upload API + Incremental Indexing
 
@@ -194,6 +211,41 @@ When `image_indexing_enabled` is on for a KB, a document's chunks exist in both 
 - Status-based filtering at ingestion time (filter at the DMS export / webhook level)
 - Automatic time-based expiry of documents based on metadata timestamps
 - Direct DMS API or database connectivity (DMS-specific, belongs in the integration layer)
+
+### Chunking Strategy Investigation — Lessons from Large-Scale Ingestion
+
+**Trigger:** Practitioner account of ingesting 20k documents / 600k pages. Key insight: not all pages need to be chunked — the pipeline must first analyze each page and chunk only relevant content. Images and tables require separate handling, not the same path as prose text.
+
+**Questions to investigate:**
+- Is our current fixed-token chunking strategy appropriate for heterogeneous documents (prose, tables, images)?
+- Should we add a pre-chunking relevance/content-type analysis step that routes pages differently?
+- How do we handle tables and images as distinct chunk types vs. embedding them as text descriptions?
+- At what document volume does page-level chunking outperform paragraph/sentence-level chunking for retrieval quality?
+
+**Likely outcome:** a chunking strategy ADR that maps content type → chunking method, with a smarter pre-filter before indexing.
+
+
+---
+
+## UI & Settings
+
+### Preset Scope — Query Presets vs. Ingestion Presets
+
+**Current behaviour:** a preset saves the full combined state — both session/query parameters (`RagConfig`: top-k, BM25, reranking, LLM model, temperature, etc.) and KB-level embedding/ingestion parameters (embedding backend, model, batch size, chunk tokens, OCR, image toggles). Presets are already per-KB: stored in `rag_presets_{kb_id}.json`, so a preset saved for KB "A" does not appear for KB "B".
+
+**The problem:** bundling query and ingestion settings into one preset is convenient but dangerous. Loading a preset that changes the embedding model silently makes the index stale — the user must re-index before results are meaningful, and there is no warning. This is an admin-level action masquerading as a casual user action.
+
+**Open questions to resolve:**
+
+1. **Should presets influence ingestion/embedding settings at all?** One argument: yes, because the embedding model is part of the "configuration profile" for a KB and admins want to save/restore complete profiles. Counter-argument: embedding settings should only be changed deliberately and never as a side-effect of loading a query preset.
+
+2. **Should presets be split into two types?**
+   - *Query presets* (user-facing): top-k, BM25 on/off, reranking, temperature, follow-up count, image retriever top-k. Safe to swap at any time — no re-index required. Could be exposed to end users, not just admins.
+   - *Ingestion presets* (admin-only): embedding backend, model, batch size, chunk tokens, OCR, image toggles. Loading one should show a warning: "This will require a full re-index to take effect."
+
+3. **Are all parameters truly per-KB?** Session parameters (`RagConfig`) are currently global — one active config shared across all KBs. KB-level parameters are per-KB. If a user switches KBs, the session config (LLM model, top-k, etc.) does not change. This may be surprising: a preset saved for KB "A" that includes LLM model selection will apply that model when loaded, even though the LLM is not KB-specific. Worth making explicit in the UI which parameters belong to the KB and which are global session settings.
+
+**Suggested direction:** split presets into query and ingestion categories; tie ingestion preset changes to a re-index warning; expose query presets to end users once role separation is in place. Decide in conjunction with the Admin / User Role Separation item above.
 
 ---
 
@@ -396,4 +448,23 @@ The index should be created after initial bulk ingestion, not before — buildin
 
 ---
 
+## Research & Future Directions
+
+### Graph-RAG — Possible Next Evolution
+
+Standard RAG retrieves isolated chunks. Graph-RAG builds a knowledge graph over the corpus and retrieves by traversing entity relationships — better for multi-hop questions and documents with dense cross-references.
+
+**Candidates to evaluate:**
+- [LightRAG](https://github.com/HKUDS/LightRAG) — lightweight graph-RAG framework; builds a KG from documents, hybrid graph + vector retrieval
+- [RAG-Anything](https://github.com/HKUDS/RAG-Anything) — multimodal extension of LightRAG; handles text, tables, images, and figures natively in the same graph
+
+**Questions to answer before committing:**
+- Does graph-RAG meaningfully improve answer quality on our target document types (technical specs, policy docs)?
+- What is the build cost — time and memory — for a 20k-document corpus?
+- Can it coexist with the current ChromaDB / BM25 hybrid, or does it replace the retrieval layer entirely?
+- How does it interact with our per-KB isolation model?
+
+**Suggested first step:** run LightRAG on the PrimePack demo dataset, compare retrieval quality on a set of multi-hop test questions against the current hybrid pipeline.
+
+---
 

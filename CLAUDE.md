@@ -70,8 +70,40 @@ Use emojis sparingly. Avoid them in commit messages, PR descriptions, and docume
 - No `Co-Authored-By: Claude ...` trailers in commit messages
 - Keep all content professional and focused on the task
 
----
 
+## Security and Error Handling
+
+### Error Handling
+
+Fail loudly on critical operations. Do not silently swallow errors:
+
+```python
+# BAD — hides failures, execution continues
+result = some_critical_call() or None
+
+# GOOD — surfaces the failure clearly
+try:
+    result = some_critical_call()
+except Exception as exc:
+    log.error(f"Critical operation failed: {exc}")
+    raise
+```
+
+Acceptable use of fallbacks: optional config reads, graceful degradation to a known-good default (e.g., `main.py` falls back to `mistral-nemo:12b` if the configured LLM fails to build).
+
+
+### Prevent Secrets Leaking
+
+- **Never print secrets to logs** — no passwords, API keys, or tokens in log output or error messages
+- Use environment variables for all credentials; never hardcode them
+- `rag_config.json` and `knowledge_bases.json` are gitignored — they may contain local paths and credentials
+
+### Public Publication — What Gets Committed and What Doesn't
+
+**Goal:** Anyone should be able to clone this repo, run a pre-configured demo out of the box, adapt it to their own situation, and publish their fork publicly without accidentally leaking their data, documents, or internal prompts. This means all customized configurations, settings should not be published. This needs to be managed in .gitignore
+
+
+---
 
 
 # CLAUDE.md — Agent Instructions specific for this Project
@@ -99,21 +131,6 @@ Fork of the SDSC SME-KT-ZH Collaboration RAG, extended with multi-KB support, hy
 | `backend/src/sme_kt_zh_collaboration_rag/db/rag_config.json` | Active RAG session config (persisted, loaded on startup) |
 | `backend/src/sme_kt_zh_collaboration_rag/db/knowledge_bases.json` | KB registry (all KB definitions + active flag) |
 
----
-
-## Current Config
-
-- **LLM:** Ollama — `mistral-nemo:12b` (~7 GB at 4-bit quant, 2–5 tok/s on CPU)
-- **Embedding:** `local` — `nomic-ai/nomic-embed-text-v1` via SentenceTransformer (fully offline)
-- **Vector store:** ChromaDB (local, per-KB)
-- **Ports:** backend 8080, frontend 3000
-- **Python venv:** created with `python3.13` (explicit version — do not use generic `python3`)
-
-Ensure the model is pulled: `ollama pull mistral-nemo:12b`
-
-> **Venv maintenance:** If the system Python minor version changes (e.g. 3.13 → 3.14), the venv must be recreated:
-> `rm -rf .venv && python3.14 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
-> Update the version here and in `local_setup.md` when this happens.
 
 ---
 
@@ -142,48 +159,12 @@ If support for a new backend is needed, add a case to the relevant factory — d
 - Changing the embedding model on an existing KB requires a full re-index with `reset=True` — the vector store dimension is locked at collection creation time.
 - KB hot-swap is in-memory only: `POST /api/v1/kb/{id}/activate` switches the active KB without a restart.
 
-### Security
-
-- **Never print secrets to logs** — no passwords, API keys, or tokens in log output or error messages
-- Use environment variables for all credentials; never hardcode them
-- `rag_config.json` and `knowledge_bases.json` are gitignored — they may contain local paths and credentials
-
-### Public Forkability — What Gets Committed and What Doesn't
-
-**Goal:** Anyone should be able to clone this repo, run the PrimePack demo out of the box, adapt it to their own situation, and publish their fork publicly without accidentally leaking their data, documents, or internal prompts.
-
-This is enforced through a committed/gitignored split:
-
-| What | Where | Committed? |
-|---|---|---|
-| PrimePack demo documents | `data/` | **Yes** — ships with the repo as the default example dataset |
-| Default system prompt (PrimePack scenario) | `prompts/system_prompt.default.md` | **Yes** |
-| Custom system prompt (user's own) | `prompts/system_prompt.custom.md` | No — gitignored |
-| RAG config / KB registry | `db/rag_config.json`, `db/knowledge_bases.json` | No — gitignored |
-
 **The pattern:**
 - `prompts/system_prompt.default.md` is the PrimePack example — it ships with the repo and shows what a well-structured prompt looks like. It is the starting point for new users.
 - Users who adapt TRAG to their own use case create `prompts/system_prompt.custom.md` (gitignored) and point their documents to a path outside the project folder. Their fork stays clean for public sharing.
 - The `data/` folder contains the committed PrimePack demo dataset. Users who adapt TRAG to their own use case should point their KB at a path **outside** the project directory so their documents are never accidentally committed.
 - If adding new config files that may contain local paths, credentials, or user-specific data, add them to `.gitignore` and provide a `.example` template instead.
 
-### Error Handling
-
-Fail loudly on critical operations. Do not silently swallow errors:
-
-```python
-# BAD — hides failures, execution continues
-result = some_critical_call() or None
-
-# GOOD — surfaces the failure clearly
-try:
-    result = some_critical_call()
-except Exception as exc:
-    log.error(f"Critical operation failed: {exc}")
-    raise
-```
-
-Acceptable use of fallbacks: optional config reads, graceful degradation to a known-good default (e.g., `main.py` falls back to `mistral-nemo:12b` if the configured LLM fails to build).
 
 ---
 
@@ -242,8 +223,6 @@ This is currently a solo fork — committing directly to `main` is fine for day-
 When making changes, check whether documentation needs updating:
 - `README.md` — if features, env vars, or repo structure changed
 - `ARCHITECTURE.md` — if the backend structure, retrieval pipeline, or data flow changed
-- `CLAUDE.md` — if development conventions or project config changed
-- `local_setup.md` — if the local setup steps or model config changed
 
 Update affected docs in the same set of changes. Do not leave docs out of sync with the code.
 
@@ -258,8 +237,6 @@ When bumping the version in the changelog, also update `frontend/src/config.ts` 
 ---
 
 ## Open Tasks
-
-- [ ] **Audit all code and notebook files** — go through `backend/notebooks/`, `conversational-toolkit/`, and all backend source files to decide what is still relevant, what can be removed, and what is missing from the Key Files table above. Goal: make the Key Files section a complete and accurate map of the codebase.
 
 Feature and development tasks live in [BACKLOG.md](BACKLOG.md).
 

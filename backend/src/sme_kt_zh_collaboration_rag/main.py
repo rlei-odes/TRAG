@@ -387,7 +387,9 @@ def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRA
             vs_connection_string=vs_conn,
             table_name=f"rag_{kb.id.replace('-', '_')}_images",
         )
-        image_retriever = _make_retriever(image_emb, image_vs, cfg.image_retriever_top_k)
+        image_retriever = _make_retriever(
+            image_emb, image_vs, cfg.image_retriever_top_k
+        )
         all_retrievers.append(image_retriever)
         log.info(
             f"Image retrieval enabled: {kb.image_embedding_model} top_k={cfg.image_retriever_top_k}"
@@ -662,7 +664,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
             if not reset:
                 image_vs_for_query = make_vector_store(
                     vs_type=vs_type,
-                    db_path=Path(kb.vs_path + "_images") if vs_type == "chromadb" else None,
+                    db_path=Path(kb.vs_path + "_images")
+                    if vs_type == "chromadb"
+                    else None,
                     embedding_model_name=kb.image_embedding_model,
                     vs_connection_string=vs_conn,
                     table_name=f"rag_{kb.id.replace('-', '_')}_images",
@@ -676,7 +680,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                 try:
                     image_vs = make_vector_store(
                         vs_type=vs_type,
-                        db_path=Path(kb.vs_path + "_images") if vs_type == "chromadb" else None,
+                        db_path=Path(kb.vs_path + "_images")
+                        if vs_type == "chromadb"
+                        else None,
                         embedding_model_name=kb.image_embedding_model,
                         vs_connection_string=vs_conn,
                         table_name=f"rag_{kb.id.replace('-', '_')}_images",
@@ -694,7 +700,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                     new_loop.close()
 
             await loop.run_in_executor(None, _sync_build_image_vs)
-            log.info(f"Image indexing complete: {len(image_chunks)} chunk(s) processed.")
+            log.info(
+                f"Image indexing complete: {len(image_chunks)} chunk(s) processed."
+            )
 
         n_files = len(Counter(c.metadata.get("source_file", "?") for c in chunks))
         log.info(

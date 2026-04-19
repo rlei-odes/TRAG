@@ -18,9 +18,15 @@ Fixes applied (v0.2.29):
 
 Monitor for recurrence. A better-instruction-following model (e.g. larger Ollama models) will reduce the frequency of format violations.
 
+### ~~Frontend Process Not Fully Stopped by `stop.sh`~~ ✓ fixed
+
+After running `./stop.sh`, the backend stops cleanly but parts of the frontend remain reachable at the original URL. On the next `./start.sh`, the Next.js dev server detects port 3000 as still occupied and opens on a new port (e.g. 3001), causing a mismatch with any bookmarks or configured `SERVER_URL` references.
+
+`stop.sh` kills the PID from the PID file and then runs `fuser -k 3000/tcp`, but Next.js spawns child worker processes that are not covered by either — they linger and hold the port. Fix: extend `stop.sh` to also kill child processes of the frontend PID (e.g. `pkill -P <frontend_pid>`) before the `fuser` call, or replace the PID-file approach with a process group kill (`kill -- -<pgid>`).
+
 ### Low Source Citation Count
 
-Observed that answers sometimes cite only 2 chunks even when retrieval is configured with a higher `k`. Possible causes: the reranker is collapsing similar chunks into fewer sources, the `used_sources_id` field in the LLM JSON response is under-populated (model not citing all chunks it used), or the source deduplication step in `_answer_post_processing` is too aggressive. Needs investigation with logging enabled on retrieved chunk count vs. cited chunk count.
+Observed that answers sometimes cite only 2 chunks even when retrieval is configured with a higher `k`. Possible causes: the reranker is collapsing similar chunks into fewer sources, the `used_sources_id` field in the LLM JSON response is under-populated (model not citing all chunks it used), or the source deduplication step in `_answer_post_processing` is too aggressive. Needs investigation with logging enabled on retrieved chunk count vs. cited chunk count. It might be good and even intended behaviour - when no fit / similarity is observed above the threshold, no bad fitting chunks should be served.
 
 ---
 
@@ -65,16 +71,48 @@ Currently all authenticated users share a single password and have full access t
 - ~~**Timestamp**~~ ✓ done — completion time appended to toast ("· 14:32")
 - **Auto-dismiss vs. persistent:** left as-is for now — current behaviour is acceptable.
 
-### Image Parsing in Documents
+### ~~Image Retrieval — Multimodal Pipeline~~ ✓ done
 
-**Goal:** extract and index content from images embedded in PDFs and other documents (diagrams, scanned pages, figures with captions).
+~~Investigation complete (see `UPSTREAM_SYNC_PLAN.md`). Decision taken.~~
+
+Implemented. See `IMAGE_RETRIEVAL_DESIGN.md` for the full design and implementation record.
+
+**What was built:** dual-collection pipeline — text in `vs_text`, images in `vs_image` (Qwen3VL-Embedding-2B). Two independent KB-level toggles: `image_indexing_enabled` and `image_retrieval_enabled`. Session-level `image_retriever_top_k` (1–4). Retrieved images injected as base64 into LLM context. Parallel retrieval via `asyncio.gather`. ChromaDB only (pgvector follow-up below).
+
+**Pending manual tests** (blocked by hardware — requires GPU and multimodal LLM):
+- PDF with embedded images, both toggles on, multimodal LLM configured
+- Indexing on, retrieval off — images indexed, not retrieved
+
+### Image Retrieval — pgvector Support for `vs_image`
+
+**Goal:** extend the dual-collection pipeline to support pgvector as the image vector store, mirroring the existing text store backend selection.
+
+**Why:** ChromaDB is local-only and single-process; production deployments targeting pgvector currently have no image store option. The image pipeline was implemented ChromaDB-first to unblock feature work; this closes the gap.
 
 **Scope:**
-- Investigate what the latest SDSC upstream changes add in this area — image parsing appears to be a focus of recent upstream work
-- Review and merge relevant upstream changes after analysing the diff (see also: Upstream Sync below)
-- Evaluate whether Docling's built-in image handling is sufficient or whether a dedicated vision model step is needed
+- `make_vector_store` call in `main.py` for the image store passes `table_name=f"rag_{kb_id}_images"` — pgvector already uses this for namespacing, so no schema change is needed
+- `_run_ingestion` in `main.py`: the image store instantiation mirrors the text store path; ensure the pgvector branch is exercised and the async/sync split is correct (same pattern as the existing text pgvector path)
+- `delete_kb` in `kb_router.py`: for pgvector, deletion of `vs_image` should drop the images table — verify the cleanup path covers both stores
+- Manual test: pgvector KB with image toggles on — index a PDF, query, confirm images surface
 
-**Why:** documents with diagrams, charts, or image-heavy layouts are currently only partially indexed — text around images is captured but image content itself is lost.
+### Image Retrieval — Source Citations with Image Preview
+
+**Goal:** display retrieved images as source citations in the chat, alongside existing text chunk citations.
+
+**Why:** currently images are injected into LLM context but the source panel only shows text chunks. Users have no way to see which images the answer drew on or verify them.
+
+**Scope:**
+- Backend: image chunks need to be returned in the `sources` field of the RAG response (currently only text chunks are included)
+- Frontend: the sources panel (and/or a dedicated image sources row) renders base64 image thumbnails with a filename label; clicking expands to full size
+- Design open question: inline thumbnail strip below the answer vs. collapsible section in the sources panel — decide at implementation time based on typical image count (1–4 per query)
+
+### Image Retrieval — Optional Caption Pipeline (low priority)
+
+`IMAGE_MODE=caption` alternative: at ingest, a lightweight VL model (e.g. `minicpm-v` via Ollama) generates a text description of each image; caption stored as a text chunk in `vs_text`. Works with any text-only LLM, no GPU required for retrieval. Useful when the corpus has important image content but large hardware is not available.
+
+### Image Retrieval — Automatic Multimodal LLM Validation (optional)
+
+When `image_retrieval_enabled` is on, the system silently injects images into the LLM context but does not validate that the configured answering LLM is actually multimodal. A non-multimodal LLM will either ignore the image data or produce an error. A startup/save-time check against the Ollama model manifest (or a known allowlist) could surface a clear warning in the UI before the user runs a query.
 
 ### File Upload API + Incremental Indexing
 
@@ -145,6 +183,10 @@ When a document is withdrawn or put out of validation in the DMS, the integratio
 `DELETE /api/v1/kb/{id}/documents/{document_id}` — removes all chunks for that document_id from the vector store. Returns 404 if not found, 200 with a count of chunks removed otherwise.
 
 This is the correct primitive for the "document no longer valid" use case. TRAG does not automatically expire documents based on timestamps — the DMS workflow owns that decision and calls the delete endpoint explicitly.
+
+**Dual-store deletion (multimodal):**
+
+When `image_indexing_enabled` is on for a KB, a document's chunks exist in both `vs_text` and `vs_image`. The `DELETE` endpoint must call `delete_chunks_by_document_id` on both stores. The same applies to document replacement during versioning: old chunks must be purged from both stores before new ones are inserted. Image chunks carry the same `document_id` and `file_hash` metadata as text chunks from the same source file, so the deletion predicate is identical — the endpoint just needs to know that two stores exist for the KB.
 
 **What is explicitly out of scope for TRAG:**
 - UI for selecting or mapping metadata fields from an uploaded sample JSON
@@ -268,268 +310,90 @@ Also document in `local_setup.md` that after first run the system is designed to
 
 ---
 
-## Upstream Sync
+## Production Installation and Architecture
 
-### Analyse and Merge Latest SDSC Changes
+### Component Map — What Runs Where
 
-**Goal:** review what has changed in the upstream SDSC repository since our fork diverged and selectively merge relevant improvements.
+Understanding what each process does helps decide how to split them across hardware:
 
-**Scope:**
-- Diff upstream `main` against our fork baseline
-- Identify new features, bug fixes, and notebook updates
-- Image parsing support appears to be a key upstream addition — coordinate with the image parsing backlog item above
-- Resolve any new merge conflicts carefully, preserving our fork's changes (keepalive streaming, metadata provider, etc.)
+| Component | Process | Compute profile | Can run remotely? |
+|---|---|---|---|
+| Frontend | Next.js (Node.js) | Lightweight — serves UI, proxies API calls | Yes — any Node host |
+| Backend | FastAPI (Python) | Medium baseline; heavy during indexing | Yes — needs network access to Ollama and vector store |
+| nomic-embed-text | Inside backend process (SentenceTransformer) | CPU-bound; ~500 MB RAM | No — embedded in backend |
+| Qwen3VL (image embeddings) | Inside backend process (transformers/PyTorch) | GPU-intensive; ~5 GB VRAM or very slow on CPU | No — embedded in backend |
+| Ollama | Separate process / server | GPU-intensive for LLM inference | Yes — `ollama_host` setting |
+| ChromaDB | Embedded in backend process | I/O-bound; scales to ~100k chunks comfortably | No — local filesystem |
+| pgvector | External PostgreSQL + pgvector extension | I/O-bound; scales to millions of chunks | Yes — connection string |
 
-**Why:** staying reasonably in sync with upstream ensures we benefit from SDSC's ongoing work without the diff growing unmanageable over time.
-
----
-
-## Appendix: Feature Specs
-
-### Spec: Ingestion Deduplication
-
-**Branch:** `feature/ingestion-deduplication`
+**Key constraint:** the Next.js frontend proxies all API calls server-side (`SERVER_URL` in `frontend/.env`). For a split deployment (frontend and backend on different hosts), `SERVER_URL` must point to the backend from the *frontend server's* perspective — not the browser's. Leave it empty only when both run on the same host.
 
 ---
 
-#### Background
+### Deployment Profiles
 
-A draft PR was submitted to the upstream SDSC repo (SwissDataScienceCenter/sme-kt-zh-collaboration-rag#3) with an initial implementation. It was not merged. The reviewer's comments identified four concrete design problems that must be addressed in this implementation. This spec incorporates those learnings.
+**Profile 1 — Single machine (current dev setup)**
+
+Everything on one machine. Ollama local, ChromaDB local, no GPU required (text-only). Simple but not scalable.
+
+```
+[User browser] → localhost:3000 (Next.js) → localhost:8080 (FastAPI) → localhost:11434 (Ollama)
+```
+
+**Profile 2 — GPU server + thin access machine**
+
+Backend and Ollama on a GPU server (on-prem or cloud). Frontend served from the same server or a lightweight separate host. Best fit for the planned deployment: GPU server does the heavy lifting; users access via browser.
+
+```
+[User browser] → frontend-host:3000 (Next.js)
+                      ↓SERVER_URL=http://gpu-server:8080
+                 gpu-server:8080 (FastAPI + nomic + Qwen3VL)
+                      ↓
+                 gpu-server:11434 (Ollama)
+                 gpu-server:5432  (pgvector, optional)
+```
+
+Ollama can alternatively run on a *different* GPU server than the backend — configure via `ollama_host` in the RAG config panel. Useful if the company already has a dedicated Ollama instance.
+
+**Profile 3 — Full production split**
+
+Frontend on a web server / reverse proxy (nginx, Caddy), backend on a GPU machine, pgvector on a managed PostgreSQL instance. Ollama on the same GPU machine as the backend or on a dedicated inference server.
 
 ---
 
-#### Problem Statement
+### Containerisation
 
-The current `build_vector_store()` has an all-or-nothing guard: if the collection already contains any chunks, the entire embedding pass is skipped. If the collection is empty, all files are parsed and embedded without any check for duplicates within the batch.
+Docker Compose is the natural packaging target. Rough service layout:
 
-This produces two failure modes:
-1. The same file under two different filenames is embedded twice in a single run, creating duplicate chunks that dilute retrieval.
-2. After a `reset=False` reindex that finds an existing collection, any new files added since the last index run are silently ignored.
+```yaml
+services:
+  frontend:   # node:22-alpine, builds Next.js, exposes 3000
+  backend:    # python:3.13-slim + pip install, exposes 8080
+  pgvector:   # pgvector/pgvector:pg16 (optional — swap for ChromaDB-only mode)
+  ollama:     # ollama/ollama (optional — or point to host Ollama via ollama_host)
+```
+
+**Challenges to solve before containerising:**
+
+- **GPU passthrough:** Ollama and Qwen3VL both need CUDA. Requires `nvidia-container-toolkit` on the Docker host and `deploy.resources.reservations.devices` in Compose. Must be tested on the target hardware before claiming it works.
+- **Model persistence:** Ollama model files (~7 GB for mistral-nemo) and Qwen3VL weights (~5 GB) must be volume-mounted or pre-baked into the image. Pre-baking makes images large but removes the first-run download. Volume mounts are more flexible but require setup on the host.
+- **Data and config persistence:** `db/` (ChromaDB collections, `rag_config.json`, `knowledge_bases.json`) and `data/` (document corpus) must be volume-mounted — never baked into the image.
+- **HuggingFace cache:** SentenceTransformer and Qwen3VL download model weights to `~/.cache/huggingface`. This cache should be volume-mounted so it survives container restarts. For air-gapped deployments, pre-populate the cache and set `HF_HUB_OFFLINE=1`.
+- **`SERVER_URL`:** in a Compose setup, the frontend container reaches the backend via the Compose service name (e.g. `http://backend:8080`), not localhost. The `frontend/.env` (or an env override in Compose) must set `SERVER_URL=http://backend:8080`.
+- **The dev server problem:** the current frontend runs `next dev`, which is not suitable for production containers. A production Compose setup should build with `next build` and serve with `next start`. This also removes the port-leaking issue from `stop.sh` entirely.
 
 ---
 
-#### Goals
+### Using pgvector as Database
 
-- Skip parsing and embedding of files whose content is already in the vector store (cross-run deduplication).
-- Skip parsing and embedding of files whose content has already been seen earlier in the same ingestion batch (within-run deduplication).
-- Stamp every chunk with its source file's SHA-256 hash so that future runs can identify it regardless of filename.
-- Keep the expensive file-parsing step (`load_chunks`) free of embedding-level concerns: hashing happens before parsing, not inside it.
-- Surface skipped files clearly in the log.
-- `reset=True` clears the store and bypasses cross-run deduplication; within-batch deduplication still applies.
+Use HNSW indexes on vector columns. Without an index, pgvector does a sequential scan (every row compared to the query), causing CPU spikes. With HNSW, queries are fast and lightweight regardless of collection size.
+
+```sql
+CREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);
+```
+
+The index should be created after initial bulk ingestion, not before — building it on an empty or growing table wastes time. Add this to the KB setup documentation when pgvector becomes the primary target.
 
 ---
 
-#### Learnings from the Draft PR (SwissDataScienceCenter/sme-kt-zh-collaboration-rag#3)
-
-The upstream reviewer (Thibaut-Loiseau) left six specific comments. The problems and their resolutions:
-
-**1. `get_existing_hashes` took a `db_path` — wrong abstraction layer**
-
-The draft passed a filesystem path to `get_existing_hashes`, then instantiated `ChromaDBVectorStore` inside the function. This hardcodes the ChromaDB backend and breaks if the vector store is PGVector or anything else.
-
-Fix: add `get_file_hashes() -> set[str]` as an abstract method on the `VectorStore` base class. Each backend implements it. Call sites pass a `VectorStore` instance, not a path.
-
-**2. `get_existing_hashes` accessed `vs.collection` directly**
-
-The draft reached into `.collection`, a ChromaDB-specific property, from what was supposed to be a backend-agnostic utility function. Acceptable in a notebook; not in production code.
-
-Fix: the logic for querying metadata lives inside the `ChromaDBVectorStore.get_file_hashes()` implementation, not in any shared utility.
-
-**3. `seen_hashes.add(hash_value)` was called before the `try/except` block**
-
-If processing the first occurrence of a duplicate file raises an exception, the hash was already registered as seen. The second occurrence would then be silently skipped — neither copy would end up in the store.
-
-Fix: only call `seen_hashes.add(hash_value)` after the file has been successfully parsed and its chunks collected.
-
-**4. The `"unknown"` fallback in `build_vector_store` was unsafe**
-
-The draft used `chunk.metadata.get("file_hash", "unknown")` when grouping chunks. If more than one chunk lacked a `file_hash` key, they would all fall into a single `"unknown"` bucket and only the first group would be ingested.
-
-Fix: `file_hash` must always be present in chunk metadata — it is stamped by `load_chunks` before any chunk is returned. If it is somehow missing at the `build_vector_store` stage, raise an error rather than silently grouping under a sentinel.
-
-**5. Don't filter inside `load_chunks`**
-
-The draft added `existing_hashes` filtering logic to `load_chunks`. The reviewer's position: `load_chunks` reads files; it should not need to know about what is already in the store.
-
-Resolution for this spec: pre-compute existing hashes from the vector store in `_run_ingestion` (in `main.py`), build the set of files to skip before calling `load_chunks`, and pass only the list of non-skipped files in. `load_chunks` itself remains unaware of the store. The within-batch deduplication (seen_hashes) lives in the pre-pass, not inside load_chunks.
-
-**6. Do not commit test fixture files for duplicate detection**
-
-The draft committed `data/EVALUATION_duplicate_file.pdf`. Testing for duplicates should reuse an already-present file — point the KB at a directory where the same file appears twice under different names (or copy one), test, then clean up.
-
----
-
-#### Design
-
-**New abstract method on `VectorStore`:**
-
-```python
-# conversational-toolkit/src/conversational_toolkit/vectorstores/base.py
-@abstractmethod
-async def get_file_hashes(self) -> set[str]:
-    """Return the set of file_hash values stored in this collection's metadata."""
-    ...
-```
-
-**`ChromaDBVectorStore.get_file_hashes()` implementation:**
-
-Follow the same pattern as `get_source_files()` — wrap the synchronous ChromaDB call in `run_in_executor`:
-
-```python
-async def get_file_hashes(self) -> set[str]:
-    import asyncio
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        None, lambda: self.collection.get(include=["metadatas"])
-    )
-    return {m["file_hash"] for m in (result.get("metadatas") or []) if m and "file_hash" in m}
-```
-
-**`PGVectorStore.get_file_hashes()` implementation:**
-
-The metadata is stored in the `chunk_metadata` JSON column. The pattern is identical to the existing `get_source_files()` method — same SQLAlchemy accessor, different key:
-
-```python
-async def get_file_hashes(self) -> set[str]:
-    await self._ensure_initialized()
-    async with self.SessionLocal() as session:
-        result = await session.execute(
-            select(self.table.c.chunk_metadata["file_hash"].astext)
-            .distinct()
-            .where(self.table.c.chunk_metadata["file_hash"].astext.isnot(None))
-        )
-        return {row[0] for row in result if row[0]}
-```
-
-**New helper `file_hash()` in `feature0_baseline_rag.py`:**
-
-```python
-def file_hash(path: Path) -> str:
-    """SHA-256 fingerprint of a file's raw bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-```
-
-**`load_chunks` signature change:**
-
-Add two new optional parameters:
-
-```python
-def load_chunks(
-    data_dirs: list[Path] | None = None,
-    ...
-    include_files: list[Path] | None = None,       # if set, skip data_dirs iteration
-    file_hashes: dict[Path, str] | None = None,    # precomputed hashes for stamping
-) -> list[Chunk]:
-```
-
-When `include_files` is provided, the function iterates that list instead of scanning `data_dirs`. This allows the pre-pass to pass only files that survived deduplication. `file_hashes` is used to stamp `chunk.metadata["file_hash"]` for each file; if a file's hash is not in the dict, compute it on the fly as a fallback (notebook compatibility).
-
-**Extract `_collect_candidate_files()` helper from `load_chunks`:**
-
-The pre-pass needs to know which files exist and pass filtering (extension, size, "EVALUATION" exclusion) before it can hash them. This logic currently lives inside `load_chunks`. Rather than duplicating it, extract it into a shared helper:
-
-```python
-def _collect_candidate_files(
-    data_dirs: list[Path],
-    max_file_size_mb: float,
-    max_files: int | None = None,
-) -> list[Path]:
-    """Return the filtered list of ingestable files from the given directories."""
-    ...
-```
-
-`load_chunks` calls this helper when `include_files` is not provided. The pre-pass calls it directly.
-
-**Pre-pass in `_run_ingestion` (main.py), before `load_chunks`:**
-
-File hashing reads entire files from disk — blocking I/O. Per the CLAUDE.md constraint, all blocking operations must use `run_in_executor`. The pre-pass runs in the executor, producing two outputs: the filtered file list and the precomputed hash map.
-
-Steps (all inside a single `run_in_executor` call, before the existing `load_chunks` executor call):
-
-1. Call `_collect_candidate_files(data_dirs, ...)` to get candidate files.
-2. For each file, compute `file_hash(path)` → build `file_hashes: dict[Path, str]`.
-3. Apply cross-run dedup: filter out files whose hash is in `existing_hashes`, log and count each skip.
-4. Apply within-batch dedup: from the remainder, build `seen_hashes`, skip files whose hash is already seen (only add to `seen_hashes` after the file passes), log and count each skip.
-5. Return `(filtered_files, file_hashes, n_skipped_store, n_skipped_batch)`.
-
-`existing_hashes` is obtained by `await vector_store.get_file_hashes()` before the executor call. To do this without blocking the event loop, the VS must be queryable from the async context:
-
-- **ChromaDB**: `ChromaDBVectorStore.get_file_hashes()` wraps in `run_in_executor` internally (consistent with `get_source_files()`), so awaiting it from the async context is correct. `make_vector_store` can be called synchronously in the async context; the same instance is passed to `_sync_build_vs`.
-- **PGVector**: `AsyncEngine` is bound to the event loop it was created in and cannot be reused in `_sync_build_vs`'s separate loop. Create two separate `PGVectorStore` instances: one in the async context for the hash query, one inside `_sync_build_vs` for embedding (as today).
-
-**`_run_ingestion` return type:**
-
-Change from `tuple[int, int]` to `tuple[int, int, int]` — adding `files_skipped`. Update the call site at line 598:
-```python
-chunks_n, files_n, skipped_n = await _run_ingestion(kb, reset)
-```
-And the `ReindexResult` construction:
-```python
-return ReindexResult(chunks_indexed=chunks_n, files_processed=files_n, files_skipped=skipped_n, reset=reset)
-```
-`update_stats` (line 599) is unchanged — it receives only `chunks_n` and `files_n` (files actually indexed, not skipped).
-
-**In `build_vector_store`:**
-
-- Remove the `current_count > 0` early-exit guard (it was the root cause of new files being silently ignored on incremental runs).
-- Accept an optional `existing_hashes: set[str] | None = None` parameter. When provided (passed from the pre-pass), use it directly — do not call `get_file_hashes()` again. When `None` (notebook/standalone call), call `get_file_hashes()` internally. This prevents loading all chunk metadata twice per reindex run.
-- Group incoming chunks by `file_hash`. Raise `ValueError` if any chunk is missing `file_hash` in its metadata.
-- For each group, check whether the hash is in `existing_hashes`. If yes, log and skip. If no, embed and insert.
-
-**`ReindexResult` and UI:**
-
-Add `files_skipped: int = 0` to `ReindexResult` in `rag_router.py`. Populate it from the pre-pass counts. Update the `statusIndexed` string in all four language files (`en.ts`, `de.ts`, `fr.ts`, `it.ts`) to surface the skipped count when non-zero. Example:
-
-```
-# when skipped > 0
-"Indexed {{chunks}} chunks from {{new}} files ({{skipped}} already up to date)."
-# when skipped == 0
-"Indexed {{chunks}} chunks from {{files}} files."
-```
-
-The frontend `reindex()` function in `rag-config-panel.tsx` already reads `data.files_processed` — it will also read `data.files_skipped` and pick the appropriate string.
-
-**Logging:**
-
-- Each cross-run skip: `INFO "Skipping {filename!r} — already in store (hash={hash[:8]}…)"`
-- Each within-batch skip: `WARNING "Skipping {filename!r} — duplicate content in current batch (hash={hash[:8]}…)"`
-- Summary at end: `INFO "Ingestion complete: {new} new files embedded, {skipped_store} skipped (already in store), {skipped_batch} skipped (duplicate in batch)"`
-
----
-
-#### Scaling Considerations
-
-These are known limitations at 10k+ documents. None block this feature's correctness at current scale; they are noted here to avoid designing into a corner.
-
-**`collection.get(include=["metadatas"])` does not scale (ChromaDB).**
-`get_file_hashes()` fetches metadata for every chunk in the collection — no pagination, no filtering, no distinct. At 200k chunks this loads hundreds of MB of Python dicts into memory and takes seconds. The existing `get_source_files()` has the same problem. The long-term fix is a separate per-file hash registry (e.g., a small SQLite or JSON file alongside the vector store) that stores one record per file rather than deriving state from chunk metadata. That is a follow-up task.
-
-**Hashing all files on every run.**
-`file_hash()` reads the entire file to compute SHA-256. At 10k × 5MB average that is 50 GB of disk reads per run, even when 9,990 files have not changed. The fix is a mtime + size fast-path: if both are unchanged since the file was last indexed, skip the SHA-256 read entirely. This requires the per-file registry above and is a follow-up.
-
-**Old collections have no `file_hash` metadata.**
-KBs indexed before this feature was deployed will have no `file_hash` in their chunk metadata. `get_file_hashes()` will return an empty set, and the first incremental reindex will re-embed everything. This is correct behaviour (not a bug) but may surprise users. Log a warning when the store is non-empty but `get_file_hashes()` returns an empty set.
-
-**BM25 in-memory corpus (pre-existing, not introduced by dedup).**
-`BM25Retriever` calls `get_chunks_by_filter()` with no filter on the first query after a reindex, loading all chunks including full text content into memory, then tokenising them to build the index. At 200k chunks this takes many seconds and several GB of RAM. It happens on the first user query, not during reindex. Dedup helps indirectly by preventing duplicate chunks from inflating the corpus, but does not solve the underlying problem.
-
----
-
-#### What Does Not Change
-
-- `reset=True` wipes the collection and skips cross-run deduplication (nothing in the store to compare against). Within-batch deduplication still applies — two files with identical content in the same batch still produce only one set of chunks.
-- The BM25 index is rebuilt from scratch on every reindex (lazy init in `BM25Retriever`), so no explicit invalidation is needed.
-- No new dependencies.
-
----
-
-#### Out of Scope for This Feature
-
-- Removal of chunks belonging to a file that has been deleted from disk (orphan cleanup).
-- A force-reingest flag for individual files.
-- UI display of per-file dedup status (only counts, not per-file breakdown).
-
-These are deferred to a follow-up once the core deduplication is stable.
-
----
 

@@ -376,13 +376,30 @@ def _build_components(kb: KBInfo, cfg: RagConfig) -> tuple[VectorStore, CustomRA
         else hybrid
     )
 
+    all_retrievers = [final_retriever]
+
+    if kb.image_retrieval_enabled:
+        image_emb = build_embedding_model("qwen3vl", kb.image_embedding_model)
+        image_vs = make_vector_store(
+            vs_type=vs_type,
+            db_path=Path(kb.vs_path + "_images") if vs_type == "chromadb" else None,
+            embedding_model_name=kb.image_embedding_model,
+            vs_connection_string=vs_conn,
+            table_name=f"rag_{kb.id.replace('-', '_')}_images",
+        )
+        image_retriever = _make_retriever(image_emb, image_vs, cfg.image_retriever_top_k)
+        all_retrievers.append(image_retriever)
+        log.info(
+            f"Image retrieval enabled: {kb.image_embedding_model} top_k={cfg.image_retriever_top_k}"
+        )
+
     base_prompt = cfg.system_prompt.strip() or _load_system_prompt()
 
     agent = CustomRAG(
         llm=llm,
         utility_llm=utility_llm,
         system_prompt=base_prompt,  # file list injected asynchronously after build
-        retrievers=[final_retriever],
+        retrievers=all_retrievers,
         number_query_expansion=cfg.query_expansion,
         enable_hyde=cfg.hyde_enabled,
     )
@@ -576,6 +593,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                 on_progress=_on_progress,
                 pdf_ocr_enabled=kb.pdf_ocr_enabled,
                 max_chunk_tokens=getattr(kb, "max_chunk_tokens", 0),
+                write_images=kb.image_indexing_enabled,
             ),
         )
         if not chunks:
@@ -583,6 +601,9 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                 f"No chunks produced for KB '{kb.name}' — vector store unchanged."
             )
             return 0, 0, n_skipped_store, n_skipped_batch
+
+        text_chunks = [c for c in chunks if c.mime_type.startswith("text")]
+        image_chunks = [c for c in chunks if c.mime_type.startswith("image")]
 
         emb = build_embedding_model(
             kb.embedding_backend,
@@ -619,7 +640,7 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                     vs_instance = vs_for_query  # ChromaDB: safe to reuse across threads
                 return new_loop.run_until_complete(
                     build_vector_store(
-                        chunks=chunks,
+                        chunks=text_chunks,
                         embedding_model=emb,
                         db_path=vs_path or VS_PATH,
                         reset=reset,
@@ -633,6 +654,48 @@ async def _run_ingestion(kb: KBInfo, reset: bool) -> tuple[int, int, int, int]:
                 new_loop.close()
 
         await loop.run_in_executor(None, _sync_build_vs)
+
+        # Image store — only when indexing toggle is on and images were extracted.
+        if kb.image_indexing_enabled and image_chunks:
+            log.info(f"Indexing {len(image_chunks)} image chunk(s) into vs_image …")
+            existing_image_hashes: set[str] = set()
+            if not reset:
+                image_vs_for_query = make_vector_store(
+                    vs_type=vs_type,
+                    db_path=Path(kb.vs_path + "_images") if vs_type == "chromadb" else None,
+                    embedding_model_name=kb.image_embedding_model,
+                    vs_connection_string=vs_conn,
+                    table_name=f"rag_{kb.id.replace('-', '_')}_images",
+                )
+                existing_image_hashes = await image_vs_for_query.get_file_hashes()
+
+            image_emb = build_embedding_model("qwen3vl", kb.image_embedding_model)
+
+            def _sync_build_image_vs():
+                new_loop = asyncio.new_event_loop()
+                try:
+                    image_vs = make_vector_store(
+                        vs_type=vs_type,
+                        db_path=Path(kb.vs_path + "_images") if vs_type == "chromadb" else None,
+                        embedding_model_name=kb.image_embedding_model,
+                        vs_connection_string=vs_conn,
+                        table_name=f"rag_{kb.id.replace('-', '_')}_images",
+                    )
+                    return new_loop.run_until_complete(
+                        build_vector_store(
+                            chunks=image_chunks,
+                            embedding_model=image_emb,
+                            db_path=Path(kb.vs_path + "_images"),
+                            reset=reset,
+                            existing_hashes=existing_image_hashes,
+                        )
+                    )
+                finally:
+                    new_loop.close()
+
+            await loop.run_in_executor(None, _sync_build_image_vs)
+            log.info(f"Image indexing complete: {len(image_chunks)} chunk(s) processed.")
+
         n_files = len(Counter(c.metadata.get("source_file", "?") for c in chunks))
         log.info(
             f"Ingestion complete: {n_files} new files embedded, "

@@ -54,6 +54,9 @@ class RagConfig(BaseModel):
     )  # custom: OpenAI-compat base URL, e.g. https://api.anthropic.com/v1
     custom_api_key: str = Field("")  # custom: API key for custom endpoint
 
+    # Image retrieval (session-level; requires image_retrieval_enabled on active KB)
+    image_retriever_top_k: int = Field(1, ge=1, le=4)
+
     # Prompt
     system_prompt: str = Field("")  # empty = use server default
     follow_up_count: int = Field(3, ge=0, le=10)

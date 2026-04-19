@@ -20,6 +20,8 @@ interface KBConfig {
     max_chunk_tokens: number;
     vs_type: "chromadb" | "pgvector";
     vs_connection_string: string;
+    image_indexing_enabled: boolean;
+    image_embedding_model: string;
 }
 
 /** Session-level config: retrieval, LLM, prompt. No re-index needed. */
@@ -39,6 +41,8 @@ interface SessionConfig {
     num_ctx: number;
     system_prompt: string;
     follow_up_count: number;
+    image_retrieval_enabled: boolean;
+    image_retriever_top_k: number;
     custom_base_url: string;
     custom_api_key: string;
 }
@@ -94,6 +98,8 @@ const DEFAULT_KB_CONFIG: KBConfig = {
     max_chunk_tokens: 0,
     vs_type: "chromadb",
     vs_connection_string: "",
+    image_indexing_enabled: false,
+    image_embedding_model: "Qwen/Qwen3-VL-Embedding-2B",
 };
 
 const DEFAULT_SESSION: SessionConfig = {
@@ -112,6 +118,8 @@ const DEFAULT_SESSION: SessionConfig = {
     num_ctx: 8192,
     system_prompt: "",
     follow_up_count: 3,
+    image_retrieval_enabled: false,
+    image_retriever_top_k: 1,
     custom_base_url: "",
     custom_api_key: "",
 };
@@ -405,6 +413,8 @@ export const RagConfigPanel: FunctionComponent = () => {
                     max_chunk_tokens: kb.max_chunk_tokens ?? 0,
                     vs_type: (kb.vs_type as KBConfig["vs_type"]) ?? "chromadb",
                     vs_connection_string: kb.vs_connection_string ?? "",
+                    image_indexing_enabled: kb.image_indexing_enabled ?? false,
+                    image_embedding_model: kb.image_embedding_model ?? "Qwen/Qwen3-VL-Embedding-2B",
                 });
                 setUserPresets(await fetchUserPresets(kb.id));
             }
@@ -572,6 +582,8 @@ export const RagConfigPanel: FunctionComponent = () => {
                     max_chunk_tokens: kb.max_chunk_tokens ?? 0,
                     vs_type: (kb.vs_type as KBConfig["vs_type"]) ?? "chromadb",
                     vs_connection_string: kb.vs_connection_string ?? "",
+                    image_indexing_enabled: kb.image_indexing_enabled ?? false,
+                    image_embedding_model: kb.image_embedding_model ?? "Qwen/Qwen3-VL-Embedding-2B",
                 });
                 const loaded = await fetchUserPresets(kb.id);
                 setUserPresets(loaded);
@@ -748,6 +760,8 @@ export const RagConfigPanel: FunctionComponent = () => {
             max_chunk_tokens: preset.data.max_chunk_tokens ?? 0,
             vs_type: preset.data.vs_type ?? "chromadb",
             vs_connection_string: preset.data.vs_connection_string ?? "",
+            image_indexing_enabled: preset.data.image_indexing_enabled ?? false,
+            image_embedding_model: preset.data.image_embedding_model ?? "Qwen/Qwen3-VL-Embedding-2B",
         });
         setSession({
             retriever_top_k: preset.data.retriever_top_k,
@@ -765,6 +779,8 @@ export const RagConfigPanel: FunctionComponent = () => {
             num_ctx: preset.data.num_ctx ?? 8192,
             system_prompt: preset.data.system_prompt,
             follow_up_count: preset.data.follow_up_count,
+            image_retrieval_enabled: preset.data.image_retrieval_enabled ?? false, 
+            image_retriever_top_k: preset.data.image_retriever_top_k ?? 1,
             custom_base_url: (preset.data as any).custom_base_url ?? "",
             custom_api_key: (preset.data as any).custom_api_key ?? "",
         });
@@ -908,6 +924,7 @@ export const RagConfigPanel: FunctionComponent = () => {
 
             {/* Preset toolbar */}
             <div className="px-3 py-2 border-b border-border/60 bg-card/60 space-y-1.5">
+                <div className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">{t("rag.presetLabel")}</div>
                 <div className="flex items-center gap-1.5">
                     <select
                         value={selectedPreset}
@@ -1229,6 +1246,18 @@ export const RagConfigPanel: FunctionComponent = () => {
                             <FieldRow label={t("rag.fieldPdfOcr")} hint={t("rag.fieldPdfOcrHint")}>
                                 <Toggle checked={kbConfig.pdf_ocr_enabled} onChange={(v) => updateKbConfig("pdf_ocr_enabled", v)} />
                             </FieldRow>
+                            <FieldRow label={t("rag.fieldImageIndexing")} hint={t("rag.fieldImageIndexingHint")}>
+                                <Toggle checked={kbConfig.image_indexing_enabled} onChange={(v) => updateKbConfig("image_indexing_enabled", v)} />
+                            </FieldRow>
+                            {(kbConfig.image_indexing_enabled) && (
+                                <FieldRow label={t("rag.fieldImageEmbeddingModel")} hint="">
+                                    <input
+                                        className="w-full bg-transparent border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                        value={kbConfig.image_embedding_model}
+                                        onChange={(e) => updateKbConfig("image_embedding_model", e.target.value)}
+                                    />
+                                </FieldRow>
+                            )}
                         </div>
                     )}
                 </div>
@@ -1259,6 +1288,14 @@ export const RagConfigPanel: FunctionComponent = () => {
                             {session.reranking_enabled && (
                                 <FieldRow label={t("rag.fieldRerankPool")} hint={t("rag.fieldRerankPoolHint")}>
                                     <NumberInput value={session.reranking_candidate_pool} min={3} max={50} step={1} onChange={(v) => updateSession("reranking_candidate_pool", v)} />
+                                </FieldRow>
+                            )}
+                            <FieldRow label={t("rag.fieldImageRetrieval")} hint={t("rag.fieldImageRetrievalHint")}>
+                                <Toggle checked={session.image_retrieval_enabled} onChange={(v) => updateSession("image_retrieval_enabled", v)} />
+                            </FieldRow>
+                            {session.image_retrieval_enabled && (
+                                <FieldRow label={t("rag.fieldImageRetrieverTopK")} hint={t("rag.fieldImageRetrieverTopKHint")}>
+                                    <NumberInput value={session.image_retriever_top_k} min={1} max={4} step={1} onChange={(v) => updateSession("image_retriever_top_k", v)} />
                                 </FieldRow>
                             )}
                         </div>

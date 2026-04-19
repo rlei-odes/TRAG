@@ -249,6 +249,7 @@ def build_embedding_model(
         # Deferred import — loading torch + transformers at module level costs seconds
         # even when this backend is not used.
         from conversational_toolkit.embeddings.qwen_vl import Qwen3VLEmbeddings
+
         name = model_name or "Qwen/Qwen3-VL-Embedding-2B"
         logger.info(f"Embedding backend: Qwen3VL ({name})")
         return Qwen3VLEmbeddings(model_name_or_path=name)
@@ -460,7 +461,10 @@ def _collect_candidate_files(
     candidates = [
         f
         for f in all_files
-        if (f.suffix.lower() in _CHUNKERS or (write_images and f.suffix.lower() in _IMAGE_EXTENSIONS))
+        if (
+            f.suffix.lower() in _CHUNKERS
+            or (write_images and f.suffix.lower() in _IMAGE_EXTENSIONS)
+        )
         and "EVALUATION" not in f.name
     ]
 

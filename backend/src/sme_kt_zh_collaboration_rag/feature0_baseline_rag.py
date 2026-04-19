@@ -245,6 +245,13 @@ def build_embedding_model(
         return OpenAIEmbeddings(
             model_name=name, base_url=url, api_key=key, dimensions=None
         )
+    elif backend == "qwen3vl":
+        # Deferred import — loading torch + transformers at module level costs seconds
+        # even when this backend is not used.
+        from conversational_toolkit.embeddings.qwen_vl import Qwen3VLEmbeddings
+        name = model_name or "Qwen/Qwen3-VL-Embedding-2B"
+        logger.info(f"Embedding backend: Qwen3VL ({name})")
+        return Qwen3VLEmbeddings(model_name_or_path=name)
     else:  # local
         name = model_name or LOCAL_EMBEDDING_MODEL
         logger.info(f"Embedding backend: local SentenceTransformer ({name})")
@@ -422,12 +429,16 @@ def _collect_candidate_files(
     data_dirs: list[Path],
     max_file_size_mb: float,
     max_files: int | None = None,
+    write_images: bool = False,
 ) -> list[Path]:
     """Return the filtered list of ingestable files from the given directories.
 
     Applies the same rules as the ingestion loop: supported extensions only,
     no EVALUATION files, within the size limit. Used by both the dedup pre-pass
     and load_chunks (when include_files is not provided).
+
+    When write_images=True, standalone image files are included alongside
+    document files so they enter the dedup pre-pass and are passed to load_chunks.
     """
     all_files: list[Path] = []
     for d in data_dirs:
@@ -441,16 +452,16 @@ def _collect_candidate_files(
 
     for f in all_files:
         ext = f.suffix.lower()
-        if ext not in _CHUNKERS:
-            if ext in _IMAGE_EXTENSIONS:
-                logger.warning(f"Skipping image file (not supported): {f.name}")
-            else:
-                logger.warning(f"Skipping unsupported file type {ext!r}: {f.name}")
+        if ext not in _CHUNKERS and ext not in _IMAGE_EXTENSIONS:
+            logger.warning(f"Skipping unsupported file type {ext!r}: {f.name}")
+        elif ext in _IMAGE_EXTENSIONS and not write_images:
+            logger.warning(f"Skipping image file (image indexing disabled): {f.name}")
 
     candidates = [
         f
         for f in all_files
-        if f.suffix.lower() in _CHUNKERS and "EVALUATION" not in f.name
+        if (f.suffix.lower() in _CHUNKERS or (write_images and f.suffix.lower() in _IMAGE_EXTENSIONS))
+        and "EVALUATION" not in f.name
     ]
 
     result: list[Path] = []
@@ -477,6 +488,7 @@ def load_chunks(
     include_files: list[Path] | None = None,  # if set, skip data_dirs discovery
     file_hashes: dict[Path, str]
     | None = None,  # precomputed hashes for stamping chunks
+    write_images: bool = False,  # extract images from PDFs and load standalone image files
 ) -> list[Chunk]:
     """Load documents and split them into chunks.
 
@@ -494,7 +506,13 @@ def load_chunks(
             stamped with chunk.metadata["file_hash"]. If a file is not in the
             map, the hash is computed on the fly so that standalone / notebook
             use always produces stamped chunks.
+        write_images: When True, extract embedded images from PDFs (as base64
+            image/png chunks) and load standalone image files. When False
+            (default), images are skipped — PDFChunker is called with
+            write_images=False and image files are ignored.
     """
+    import base64
+
     dirs = data_dirs if data_dirs else [DATA_DIR]
     all_chunks: list[Chunk] = []
 
@@ -504,27 +522,45 @@ def load_chunks(
             f"Chunking {len(supported_files)} files (pre-filtered by dedup pre-pass)"
         )
     else:
-        supported_files = _collect_candidate_files(dirs, max_file_size_mb, max_files)
+        supported_files = _collect_candidate_files(
+            dirs, max_file_size_mb, max_files, write_images=write_images
+        )
         logger.info(
             f"Chunking {len(supported_files)} files from {[str(d) for d in dirs]}"
         )
 
     for file_idx, file_path in enumerate(supported_files):
-        chunker = _CHUNKERS[file_path.suffix.lower()]
+        ext = file_path.suffix.lower()
         try:
             if on_progress:
                 on_progress(
                     file_path.name, file_idx, len(supported_files), len(all_chunks)
                 )
-            kwargs = {}
-            if hasattr(chunker, "make_chunks") and file_path.suffix.lower() == ".pdf":
-                kwargs["do_ocr"] = pdf_ocr_enabled
-            file_chunks = chunker.make_chunks(str(file_path), **kwargs)
-            if max_chunk_tokens > 0:
-                split: list[Chunk] = []
-                for c in file_chunks:
-                    split.extend(_split_chunk_by_tokens(c, max_chunk_tokens))
-                file_chunks = split
+
+            if ext in _IMAGE_EXTENSIONS:
+                # Standalone image file — load as a single base64 chunk
+                b64 = base64.b64encode(file_path.read_bytes()).decode()
+                file_chunks: list[Chunk] = [
+                    Chunk(
+                        content=b64,
+                        mime_type="image/png",
+                        title=file_path.name,
+                        metadata={},
+                    )
+                ]
+            else:
+                chunker = _CHUNKERS[ext]
+                kwargs: dict = {}
+                if ext == ".pdf":
+                    kwargs["do_ocr"] = pdf_ocr_enabled
+                    kwargs["write_images"] = write_images
+                file_chunks = chunker.make_chunks(str(file_path), **kwargs)
+                if max_chunk_tokens > 0:
+                    split: list[Chunk] = []
+                    for c in file_chunks:
+                        split.extend(_split_chunk_by_tokens(c, max_chunk_tokens))
+                    file_chunks = split
+
             h = (file_hashes or {}).get(file_path) or file_hash(file_path)
             for chunk in file_chunks:
                 chunk.metadata["source_file"] = file_path.name
@@ -638,9 +674,8 @@ async def build_vector_store(
     # Other models ignore these prefixes harmlessly.
     use_nomic_prefix = "nomic" in getattr(embedding_model, "model_name", "").lower()
 
-    text_chunks = [c for c in chunks_to_embed if c.mime_type.startswith("text")]
-    for i in range(0, len(text_chunks), batch_size):
-        batch = text_chunks[i : i + batch_size]
+    for i in range(0, len(chunks_to_embed), batch_size):
+        batch = chunks_to_embed[i : i + batch_size]
 
         if use_nomic_prefix:
             texts = [f"search_document: {c.content}" for c in batch]
@@ -651,7 +686,7 @@ async def build_vector_store(
 
         await vector_store.insert_chunks(chunks=batch, embedding=embeddings)
         batch_idx = i // batch_size + 1
-        total_batches = (len(text_chunks) - 1) // batch_size + 1
+        total_batches = (len(chunks_to_embed) - 1) // batch_size + 1
         logger.info(f"Processed batch {batch_idx}/{total_batches}")
         if on_embed_progress:
             on_embed_progress(batch_idx, total_batches)

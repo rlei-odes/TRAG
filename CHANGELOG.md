@@ -5,6 +5,28 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [TRAG v0.2.30] — 2026-04-19 · rlei-odes
+
+### Added — Multimodal Image Retrieval Pipeline
+
+Dual-collection RAG pipeline for indexing and retrieving images from PDFs and standalone image files. See `DESIGN_DOC_IMAGE_RETRIEVAL.md` for the full design record.
+
+- Two independent KB-level toggles: `image_indexing_enabled` (extract and embed images at ingest) and `image_retrieval_enabled` (query `vs_image` and inject into LLM context). Both default to `false` — zero overhead when disabled.
+- Image chunks embedded with `Qwen3VL-Embedding-2B` into a separate ChromaDB collection at `<vs_path>_images`. Text pipeline unchanged.
+- Session-level `image_retriever_top_k` (1–4, default 1) shown in the sidebar only when the active KB has `image_retrieval_enabled` on.
+- `image_embedding_model` configurable per KB; shared by both indexing and retrieval.
+- `write_images` parameter threaded through `_collect_candidate_files` and `load_chunks` — standalone image files enter the dedup pre-pass and are loaded as base64 chunks when enabled.
+- `build_vector_store` generalised: text-only filter removed so image chunks are embedded correctly; caller routes text and image chunks to the appropriate store.
+- Retrieval parallelised with `asyncio.gather` across all retrievers (replaces sequential loop); image retriever bypasses LLM reranking.
+- KB deletion cleans up both `vs_text` and `vs_image` directories.
+- All four UI languages updated (en, de, fr, it).
+
+### Fixed — `stop.sh` Leaves Frontend Workers Running
+
+Next.js spawns child worker processes not covered by the PID file. After `./stop.sh` these lingered, holding port 3000 so the next `./start.sh` would open on port 3001. Added `pkill -P <frontend_pid>` to kill child processes before the main process.
+
+---
+
 ## [TRAG v0.2.29] — 2026-04-18 · rlei-odes
 
 ### Fixed — Answer Disappears After Streaming

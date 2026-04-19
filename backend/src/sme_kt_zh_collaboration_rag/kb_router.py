@@ -51,6 +51,9 @@ class KBCreate(BaseModel):
     max_chunk_tokens: int = 0
     vs_type: str = "chromadb"  # "chromadb" | "pgvector"
     vs_connection_string: str = ""  # used when vs_type == "pgvector"
+    image_indexing_enabled: bool = False
+    image_retrieval_enabled: bool = False
+    image_embedding_model: str = "Qwen/Qwen3-VL-Embedding-2B"
 
 
 class KBInfo(KBCreate):
@@ -189,12 +192,12 @@ def create_kb_router(
             reg.active = next(iter(reg.bases))
             await activate_callback(reg.bases[reg.active])
         _save(reg)
-        # Only delete local directory for chromadb; pgvector tables are managed externally
+        # Only delete local directories for chromadb; pgvector tables are managed externally
         if kb.vs_type == "chromadb":
-            vs = Path(kb.vs_path)
-            if vs.exists():
-                shutil.rmtree(vs)
-                log.info(f"Deleted VS at {vs}")
+            for vs in [Path(kb.vs_path), Path(kb.vs_path + "_images")]:
+                if vs.exists():
+                    shutil.rmtree(vs)
+                    log.info(f"Deleted VS at {vs}")
         log.info(f"Deleted KB '{kb.name}' (id={kb_id})")
         return {"deleted": kb_id}
 

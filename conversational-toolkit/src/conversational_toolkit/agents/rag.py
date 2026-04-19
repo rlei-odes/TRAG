@@ -4,6 +4,7 @@ Retrieval-Augmented Generation (RAG) agent.
 'RAG' combines document retrieval with language model generation. Before calling the LLM it rewrites the query to be history-independent, optionally expands it into multiple search queries, retrieves relevant chunks from all configured retrievers, merges the ranked results via Reciprocal Rank Fusion, and injects the sources into the LLM prompt using XML tags.
 """
 
+import asyncio
 from typing import Any, AsyncGenerator
 
 from conversational_toolkit.agents.base import Agent, AgentAnswer, QueryWithContext
@@ -71,11 +72,12 @@ class RAG(Agent):
             hyde_expansion_message = await hyde_expansion(query, self.utility_llm)
             queries.append(hyde_expansion_message)
 
-        sources: list[ChunkRecord] = []
-        for retriever in self.retrievers:
-            retrieved = [await retriever.retrieve(q) for q in queries]
-            if retrieved:
-                sources += reciprocal_rank_fusion(retrieved)[: retriever.top_k]
+        async def _retrieve_one(retriever) -> list[ChunkRecord]:
+            results = await asyncio.gather(*[retriever.retrieve(q) for q in queries])
+            return reciprocal_rank_fusion(list(results))[: retriever.top_k]
+
+        all_results = await asyncio.gather(*[_retrieve_one(r) for r in self.retrievers])
+        sources: list[ChunkRecord] = [chunk for group in all_results for chunk in group]
 
         sources_list = []
 

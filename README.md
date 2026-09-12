@@ -1,5 +1,11 @@
 # TRAG — Production-Grade RAG Framework
 
+> [!NOTE]
+> **This repository is no longer maintained.**
+> Development continues in [rlei-odes/lancy](https://github.com/rlei-odes/lancy)
+
+
+
 > A full-stack, production-ready Retrieval-Augmented Generation system.
 > Built on the [SDSC SME-KT-ZH Collaboration RAG](https://github.com/SwissDataScienceCenter/sme-kt-zh-collaboration-rag) baseline,
 > extended with a complete production stack by [Vonlanthen INSIGHT](https://www.vonlanthen.tv),
